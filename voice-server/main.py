@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from services.channel_manager import ChannelManager
-from services.auth_service import verify_jwt_token
+from services.auth_service import verify_jwt_token 
 import json
 
 app = FastAPI()
@@ -11,14 +11,17 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
     # បង្កើនទំហំផ្ទុកទិន្នន័យ (25MB) ការពារការដាច់ពេលផ្ញើ File រូបភាព
     websocket._max_size = 25 * 1024 * 1024 
 
+    # --- ផ្នែកពិនិត្យ និងបកប្រែ Token ដើម្បីទាញយកឈ្មោះពិត (name) ពី Database ---
     user_info = verify_jwt_token(token)
     if not user_info:
         await websocket.accept()
         await websocket.close(code=4008)
         return
+        
+    # ចាប់យកឈ្មោះពិតពី Token (សសរស្ដម្ភ name)
+    username = user_info.get("name", "User")
 
     await websocket.accept()
-    username = user_info.get("name", "User")
     await manager.connect(channel, websocket, username)
     await manager.broadcast_text(channel, {"type": "system", "message": f"🔔 {username} បានចូលក្នុងបន្ទប់"})
 
@@ -61,7 +64,7 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     await manager.broadcast_text(channel, {
                         "type": "file",
                         "sender": username,
-                        "file_name": data.get("file_name"),
+                        "file_name": file.name if 'file' in locals() else data.get("file_name"),
                         "file_type": data.get("file_type"),
                         "file_data": data.get("file_data")
                     })
@@ -76,5 +79,11 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     })
 
     except WebSocketDisconnect:
+        # ដក Client ភ្លាមៗពេលដាច់ Connection ឬចាកចេញ
         await manager.disconnect(channel, websocket)
         await manager.broadcast_text(channel, {"type": "system", "message": f"🚶 {username} បានចាកចេញ"})
+        
+    except Exception as e:
+        # 🟢 កែសម្រួល៖ លុប print(print()) ឌុបចេញ ដើម្បីកុំឱ្យគាំង Bug
+        print(f"Error encountered: {e}")
+        await manager.disconnect(channel, websocket)

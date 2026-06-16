@@ -19,8 +19,8 @@ class DatabaseSeeder extends Seeder
         // បង្កើត User គំរូមួយសម្រាប់សាកល្បង Login
         User::create(
         [
-            'name' => 'User 02',
-            'email' => 'test2@realptt.com',
+            'name' => 'Admin',
+            'email' => 'admin@realptt.com',
             'password' => Hash::make('password123'), // Password សម្រាប់ Login
         ]);
 

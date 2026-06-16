@@ -7,7 +7,7 @@ class ChannelManager:
         self.channels = {}
 
     async def update_user_count(self, channel: str):
-        """ 🎯 ផ្ញើចំនួនសមាជិកបច្ចុប្បន្ន និងបញ្ជីឈ្មោះ (រាប់តែឈ្មោះប្លែកគ្នា - Unique Users) """
+        """ ផ្ញើចំនួនសមាជិកបច្ចុប្បន្ន និងបញ្ជីឈ្មោះទៅកាន់គ្រប់ Client ទាំងអស់ក្នុងបន្ទប់ """
         if channel in self.channels:
             unique_usernames = list(set(self.channels[channel]["users"].values()))
             payload = {
@@ -28,37 +28,40 @@ class ChannelManager:
         await self.update_user_count(channel)
 
     async def disconnect(self, channel: str, websocket: WebSocket):
+        """ 🟢 មុខងារកែសម្រួលថ្មី៖ ដោះស្រាយបញ្ហា Logout ហើយចំនួនសមាជិកមិនព្រមថយចុះ """
         if channel in self.channels:
+            # ១. លុប WebSocket client ដែលដាច់ការភ្ជាប់ចេញពីបន្ទប់
             if websocket in self.channels[channel]["users"]:
                 del self.channels[channel]["users"][websocket]
-                if self.channels[channel]["speaker"] == websocket:
-                    self.channels[channel]["speaker"] = None
-                if len(self.channels[channel]["users"]) == 0:
-                    del self.channels[channel]
-                else:
-                    await self.update_user_count(channel)
+
+            # ២. បើគាត់ជាអ្នកកំពុងនិយាយ PTT ត្រូវលែងសោរ PTT វិញ
+            if self.channels[channel]["speaker"] == websocket:
+                self.channels[channel]["speaker"] = None
+
+            # ៣. បើគ្មានមនុស្សសល់ក្នុងបន្ទប់ទាល់តែសោះ លុបបន្ទប់នោះចោល
+            if len(self.channels[channel]["users"]) == 0:
+                del self.channels[channel]
+            else:
+                # ផ្ញើចំនួន និងបញ្ជីឈ្មោះថ្មីទៅកាន់អ្នកដែលនៅសល់ភ្លាមៗ
+                await self.update_user_count(channel)
 
     async def request_ptt(self, channel: str, websocket: WebSocket) -> bool:
-        """ សុំសិទ្ធិនិយាយ PTT """
         if channel in self.channels and self.channels[channel]["speaker"] is None:
             self.channels[channel]["speaker"] = websocket
             return True
         return False
 
     async def release_ptt(self, channel: str, websocket: WebSocket) -> bool:
-        """ លែងដៃឈប់និយាយ PTT """
         if channel in self.channels and self.channels[channel]["speaker"] == websocket:
             self.channels[channel]["speaker"] = None
             return True
         return False
 
     async def broadcast_audio(self, channel: str, sender_ws: WebSocket, audio_bytes: bytes):
-        """ 🎯 បញ្ជូនគ្រាប់សំឡេងទៅកាន់អ្នកដទៃ (គាំទ្រទាំង PTT និងប្រព័ន្ធ Call រួមគ្នា) """
         if channel in self.channels:
             is_ptt_speaker = self.channels[channel]["speaker"] == sender_ws
             is_line_free = self.channels[channel]["speaker"] is None
             
-            # បើគាត់កំពុងកាន់សោរ PTT ឬខ្សែទំនេរ (ស្ថានភាពលេង mode Call) ទើបអនុញ្ញាតឱ្យសំឡេងឆ្លងកាត់
             if is_ptt_speaker or is_line_free:
                 for user_ws in self.channels[channel]["users"].keys():
                     if user_ws != sender_ws:
@@ -76,10 +79,10 @@ class ChannelManager:
                     pass
 
     async def send_to_user(self, channel: str, target_username: str, data_dict: dict):
-        """ ផ្ញើសារចំគោលដៅទៅកាន់ User ម្នាក់ជាក់លាក់ (សម្រាប់ប្រព័ន្ធ Call) """
+        """ ផ្ញើសារចំគោលដៅទៅកាន់ User ម្នាក់ជាក់លាក់ (មិនខ្វល់រឿងអក្សរធំ-តូច) """
         if channel in self.channels:
             for user_ws, name in self.channels[channel]["users"].items():
-                if name == target_username:
+                if str(name).lower() == str(target_username).lower():
                     try:
                         await user_ws.send_text(json.dumps(data_dict))
                     except Exception:
