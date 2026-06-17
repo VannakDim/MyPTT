@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\GroupController;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,5 +24,8 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // អ្នកអាចបន្ថែម Route ផ្សេងៗទៀតដែលត្រូវការ Token នៅទីនេះបាន...
     // ឧទាហរណ៍៖ Route::get('/channels', [ChannelController::class, 'index']);
+
+    Route::get('/my-groups', [GroupController::class, 'myGroups']);
+    Route::get('/groups/{id}/members', [GroupController::class, 'groupMembers']);
     
 });
