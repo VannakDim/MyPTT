@@ -1,0 +1,7 @@
+services:
+  voice-server:
+    build: .
+    container_name: voice-server
+    restart: unless-stopped
+    ports:
+      - "9000:9000"

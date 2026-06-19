@@ -4,6 +4,12 @@ from services.auth_service import verify_jwt_token
 import json
 
 app = FastAPI()
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "MyPTT Voice Server"
+    }
 manager = ChannelManager()
 
 @app.websocket("/ws/{channel}")

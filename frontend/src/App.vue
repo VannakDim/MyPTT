@@ -47,6 +47,7 @@ body {
 }
 
 .header-bar {
+  margin-bottom: 20px;
   background: #2c3e50;
   color: white;
   padding: 15px 30px;
