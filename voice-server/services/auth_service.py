@@ -1,10 +1,11 @@
+import os
 import jwt
 import requests
 from fastapi import HTTPException, status
 
 # ចំណាំ៖ បើ Laravel ប្រើ Secret Key សម្រាប់ផ្ដិតមេដៃ JWT យើងអាចយកមកដាក់ទីនេះបាន
 # ឬវិធីងាយស្រួលបំផុតគឺឱ្យ FastAPI ហៅទៅ API របស់ Laravel ដើម្បីផ្ទៀងផ្ទាត់ (Token Introspection)
-LARAVEL_AUTH_URL = "http://localhost:8000/api/user" # កែតម្រូវតាម URL របស់ Laravel API អ្នក
+LARAVEL_AUTH_URL = os.getenv("LARAVEL_AUTH_URL", "http://localhost:8000/api/user") # កែតម្រូវតាម URL របស់ Laravel API អ្នក
 
 def verify_jwt_token(token: str):
     """

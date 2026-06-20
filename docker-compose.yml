@@ -1,0 +1,79 @@
+services:
+  # Database Service
+  mysql:
+    image: mysql:8.0
+    container_name: myptt-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: real_db
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - myptt-network
+
+  # Laravel Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: myptt-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/var/www
+    depends_on:
+      - mysql
+    environment:
+      - DB_HOST=mysql
+      - DB_DATABASE=real_db
+      - DB_USERNAME=root
+      - DB_PASSWORD=
+    networks:
+      - myptt-network
+
+  # Python Voice Server
+  voice-server:
+    build:
+      context: ./voice-server
+      dockerfile: Dockerfile
+    container_name: myptt-voice-server
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./voice-server:/app
+    depends_on:
+      - backend
+    environment:
+      - LARAVEL_AUTH_URL=http://backend:8000/api/user
+    networks:
+      - myptt-network
+
+  # VueJS Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: myptt-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+      - voice-server
+    networks:
+      - myptt-network
+
+volumes:
+  mysql-data:
+
+networks:
+  myptt-network:
+    driver: bridge
