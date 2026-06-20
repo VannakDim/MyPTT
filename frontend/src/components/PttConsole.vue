@@ -77,7 +77,13 @@
         </div>
       </div>
 
-      <div class="logs-container">
+      <div class="logs-header-section">
+        <button @click="showLogs = !showLogs" class="btn-toggle-logs" type="button">
+          📋 {{ showLogs ? 'លាក់ System Logs' : 'បង្ហាញ System Logs' }}
+        </button>
+      </div>
+
+      <div v-if="showLogs" class="logs-container">
         <h4>System Logs:</h4>
         <ul><li v-for="(log, i) in logs" :key="i">{{ log }}</li></ul>
       </div>
@@ -166,6 +172,7 @@ const activeCallUser = ref("");
 const pttState = ref("idle");
 const pttButtonText = ref("ចុចជាប់ដើម្បីនិយាយ (PTT)");
 const logs = ref([]);
+const showLogs = ref(false);
 const chatMessages = ref([]);
 const typedText = ref("");
 const chatRef = ref(null);
@@ -462,7 +469,32 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .call-actions { display: flex; gap: 10px; justify-content: center; margin-top: 15px; }
 .btn-accept { background: #2ecc71; color: white; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; }
 .btn-reject { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; }
-.logs-container { width: 100%; text-align: left; background: #fff; max-height: 80px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 6px; }
+.logs-header-section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  margin-bottom: 5px;
+}
+.btn-toggle-logs {
+  background: #f1f2f6;
+  color: #57606f;
+  border: 1px solid #ced6e0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+}
+.btn-toggle-logs:hover {
+  background: #e4e7eb;
+  color: #2f3542;
+}
+.logs-container { width: 100%; text-align: left; background: #fff; max-height: 80px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 6px; box-sizing: border-box; margin-top: 5px; }
 .logs-container ul { list-style: none; padding: 0; margin: 0; }
 .logs-container li { padding: 2px 4px; margin-bottom: 2px; background: #f9f9f9; border-left: 3px solid #7f8c8d; color: #111; font-size: 11px; }
 .chat-area { flex-grow: 1; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
