@@ -381,7 +381,7 @@ body {
 .header-bar {
   margin: 20px auto;
   max-width: 1024px;
-  width: calc(100% - 40px);
+  width: 100%;
   background: #2c3e50;
   color: white;
   padding: 10px 20px;
