@@ -52,17 +52,19 @@ const handleSubmit = async () => {
   error.value = '';
   
   try {
-    const response = await axios.post('http://192.168.100.11:8000/api/login', {
+    const response = await axios.post(`${import.meta.env.VITE_LARAVEL_API_URL}/api/login`, {
       email: email.value,
       password: password.value,
       device_name: 'WebDashboard'
     });
 
     if (response.data.status === 'success') {
-      // ផ្ញើទិន្នន័យ Token និង User ទៅកាន់ App.vue
+      // ផ្ញើទិន្នន័យ Token, User, Email និង Role ទៅកាន់ App.vue
       emit('login-success', {
         token: response.data.token,
-        username: response.data.user.name
+        username: response.data.user.name,
+        email: response.data.user.email,
+        role: response.data.user.role || 'user'
       });
     }
   } catch (err) {

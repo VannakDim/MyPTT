@@ -14,8 +14,8 @@
 
       <div class="status-bar">
         <p>ស្ថានភាព៖ <span class="txt-bold" :class="systemStatus === 'Connected' ? 'txt-online' : 'txt-offline'">{{ systemStatus }}</span></p>
-        <button v-if="!isAudioUnlocked" @click="unlockAudio" class="btn-unlock-audio">
-          🔊 បើកសំឡេង (ទូរស័ព្ទ)
+        <button @click="toggleMute" class="btn-unlock-audio" :class="getAudioClass" :title="getAudioTitle">
+          {{ getAudioIcon }}
         </button>
         <p>Online៖ <span class="badge-online">{{ onlineUsersCount }} នាក់</span></p>
       </div>
@@ -35,24 +35,32 @@
       <div class="member-box">
         <h4>បញ្ជីសមាជិកក្នុងក្រុម</h4>
         <div class="member-list">
-          <div v-for="user in allRegisteredUsers" :key="user" class="member-item">
+          <div v-for="user in allRegisteredUsers" :key="user.name" class="member-item">
             <div class="member-info">
-              <span v-if="isUserOnline(user)" class="status-dot online">🟢</span>
+              <span v-if="isUserOnline(user.name)" class="status-dot online">🟢</span>
               <span v-else class="status-dot offline">⚫</span>
-              <span class="member-name" :class="{ 'is-me': String(user).toLowerCase() === String(username).toLowerCase() }">
-                {{ user }} {{ String(user).toLowerCase() === String(username).toLowerCase() ? '(ខ្ញុំ)' : '' }}
+              
+              <!-- Circular Avatar -->
+              <div class="member-avatar" :style="getAvatarStyle(user.avatar, user.name)">
+                <img v-if="parseAvatar(user.avatar, user.name).type === 'image'" :src="parseAvatar(user.avatar, user.name).value" class="avatar-img" />
+                <span v-else-if="parseAvatar(user.avatar, user.name).type === 'emoji'">{{ parseAvatar(user.avatar, user.name).value }}</span>
+                <span v-else>{{ parseAvatar(user.avatar, user.name).value }}</span>
+              </div>
+
+              <span class="member-name" :class="{ 'is-me': String(user.name).toLowerCase() === String(username).toLowerCase() }">
+                {{ user.name }} {{ String(user.name).toLowerCase() === String(username).toLowerCase() ? '(ខ្ញុំ)' : '' }}
               </span>
             </div>
             
             <button 
-              v-if="String(user).toLowerCase() !== String(username).toLowerCase() && isUserOnline(user)" 
-              @click="makeCall(user)" 
+              v-if="String(user.name).toLowerCase() !== String(username).toLowerCase() && isUserOnline(user.name)" 
+              @click="makeCall(user.name)" 
               :disabled="callMode !== 'idle'"
               class="btn-action-call"
             >
               📞 Call
             </button>
-            <span v-else-if="String(user).toLowerCase() !== String(username).toLowerCase()" class="offline-text">មិនស្ថិតក្នុងប្រព័ន្ធ</span>
+            <span v-else-if="String(user.name).toLowerCase() !== String(username).toLowerCase()" class="offline-text">មិនស្ថិតក្នុងប្រព័ន្ធ</span>
           </div>
         </div>
       </div>
@@ -103,10 +111,42 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
 
 const props = defineProps({ userToken: { type: String, required: true } });
 const username = localStorage.getItem('ptt_username') || 'admin'; 
+
+// Helper: Parse avatar JSON string
+const parseAvatar = (avatarStr, usernameVal) => {
+  if (!avatarStr) return { type: 'initial', value: usernameVal ? usernameVal.charAt(0).toUpperCase() : 'U' };
+  try {
+    const parsed = JSON.parse(avatarStr);
+    return parsed;
+  } catch (e) {
+    if (avatarStr.startsWith('data:image/')) {
+      return { type: 'image', value: avatarStr };
+    }
+    return { type: 'initial', value: avatarStr.charAt(0).toUpperCase() };
+  }
+};
+
+const getAvatarStyle = (avatarStr, usernameVal) => {
+  const parsed = parseAvatar(avatarStr, usernameVal);
+  if (parsed.type === 'emoji' && parsed.bg) {
+    return { backgroundColor: parsed.bg };
+  }
+  if (parsed.type === 'initial') {
+    const colors = ['#3498db', '#2ecc71', '#9b59b6', '#e74c3c', '#f1c40f', '#1abc9c', '#e67e22'];
+    let hash = 0;
+    const name = usernameVal || 'User';
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const color = colors[Math.abs(hash) % colors.length];
+    return { backgroundColor: color, color: 'white' };
+  }
+  return {};
+}; 
 
 // អថេរគ្រប់គ្រងទិន្នន័យក្រុមទាញចេញពី Laravel API
 const myGroups = ref([]);
@@ -142,7 +182,7 @@ const fetchUserGroups = async () => {
     const cleanToken = props.userToken ? props.userToken.trim() : '';
     console.log("🔄 [FRONTEND] កំពុងហៅទៅ Laravel ជាមួយ Token:", `Bearer ${cleanToken}`);
 
-    const response = await fetch('http://192.168.100.11:8000/api/my-groups', {
+    const response = await fetch(`${import.meta.env.VITE_LARAVEL_API_URL}/api/my-groups`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${cleanToken}`,
@@ -182,7 +222,11 @@ const fetchUserGroups = async () => {
   ];
   selectedGroupId.value = 1;
   currentChannelName.value = 'security';
-  allRegisteredUsers.value = ["admin", "security_01", "security_02"];
+  allRegisteredUsers.value = [
+    { name: 'admin', avatar: '' },
+    { name: 'security_01', avatar: '' },
+    { name: 'security_02', avatar: '' }
+  ];
 };
 
 // ========================================================
@@ -191,7 +235,7 @@ const fetchUserGroups = async () => {
 const fetchGroupMembers = async (groupId) => {
   try {
     const cleanToken = props.userToken ? props.userToken.trim() : '';
-    const response = await fetch(`http://192.168.100.11:8000/api/groups/${groupId}/members`, {
+    const response = await fetch(`${import.meta.env.VITE_LARAVEL_API_URL}/api/groups/${groupId}/members`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${cleanToken}`,
@@ -233,6 +277,27 @@ const isUserOnline = (user) => {
   return onlineUserList.value.includes(String(user).toLowerCase());
 };
 
+const isMuted = ref(false);
+
+const toggleMute = async () => {
+  if (!isAudioUnlocked.value) {
+    await unlockAudio();
+  }
+  isMuted.value = !isMuted.value;
+};
+
+const getAudioIcon = computed(() => {
+  return isMuted.value ? '🔇' : '🔊';
+});
+
+const getAudioClass = computed(() => {
+  return isMuted.value ? 'audio-muted' : 'audio-active';
+});
+
+const getAudioTitle = computed(() => {
+  return isMuted.value ? 'បើកសំឡេងវិញ (Muted)' : 'បិទសំឡេង (Unmuted)';
+});
+
 const unlockAudio = async () => {
   if (isAudioUnlocked.value) return;
   try {
@@ -244,7 +309,7 @@ const unlockAudio = async () => {
 
 const connectWS = () => {
   systemStatus.value = "Connecting...";
-  ws = new WebSocket(`ws://192.168.100.11:9000/ws/${currentChannelName.value}?token=${props.userToken}`);
+  ws = new WebSocket(`${import.meta.env.VITE_FASTAPI_WS_URL}/ws/${currentChannelName.value}?token=${props.userToken}`);
   
   ws.onopen = () => { systemStatus.value = "Connected"; };
   ws.onmessage = async (event) => {
@@ -294,7 +359,7 @@ const startTalking = () => { if (callMode.value === 'connected') return; if (ws?
 const stopTalking = () => { if (pttState.value === 'talking') { stopRecording(); ws.send(JSON.stringify({ action: "ptt_stop" })); } };
 const startRecording = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); sourceNode = recordCtx.createMediaStreamSource(stream); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (pttState.value !== 'talking') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
 const stopRecording = () => { if (processorNode) { processorNode.disconnect(); processorNode = null; } if (sourceNode) { sourceNode.disconnect(); sourceNode = null; } if (recordCtx && recordCtx.state !== 'closed') { recordCtx.close(); recordCtx = null; } };
-const playAudio = async (blob) => { try { if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); if (playCtx.state === 'suspended') await playCtx.resume(); const arrayBuffer = await blob.arrayBuffer(); const int16 = new Int16Array(arrayBuffer); const float32 = new Float32Array(int16.length); for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x7FFF; const audioBuffer = playCtx.createBuffer(1, float32.length, 16000); audioBuffer.getChannelData(0).set(float32); const source = playCtx.createBufferSource(); source.buffer = audioBuffer; source.connect(playCtx.destination); source.start(); } catch (e) { console.error(e); } };
+const playAudio = async (blob) => { if (isMuted.value) return; try { if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); if (playCtx.state === 'suspended') await playCtx.resume(); const arrayBuffer = await blob.arrayBuffer(); const int16 = new Int16Array(arrayBuffer); const float32 = new Float32Array(int16.length); for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x7FFF; const audioBuffer = playCtx.createBuffer(1, float32.length, 16000); audioBuffer.getChannelData(0).set(float32); const source = playCtx.createBufferSource(); source.buffer = audioBuffer; source.connect(playCtx.destination); source.start(); } catch (e) { console.error(e); } };
 const sendChat = () => { if (!typedText.value.trim()) return; ws.send(JSON.stringify({ action: "chat_message", text: typedText.value })); typedText.value = ""; };
 const sendFile = (event) => { const file = event.target.files[0]; if (!file) return; if (file.size > 5 * 1024 * 1024) { alert("File ត្រូវតែមានទំហំតូចជាង 5MB"); return; } const reader = new FileReader(); reader.onload = () => { ws.send(JSON.stringify({ action: "file_share", file_name: file.name, file_type: file.type, file_data: reader.result })); }; reader.readAsDataURL(file); };
 const handleBeforeUnload = () => { closeConnection(); };
@@ -303,16 +368,25 @@ const closeConnection = () => { if (ws) ws.close(); stopCallAudio(); };
 onMounted(async () => { 
   await fetchUserGroups(); 
   connectWS(); 
+  
+  // Auto-unlock audio context on first user interaction anywhere
+  const unlockOnFirstClick = async () => {
+    await unlockAudio();
+    document.removeEventListener('click', unlockOnFirstClick);
+    document.removeEventListener('touchstart', unlockOnFirstClick);
+  };
+  document.addEventListener('click', unlockOnFirstClick);
+  document.addEventListener('touchstart', unlockOnFirstClick);
+
   window.addEventListener('beforeunload', handleBeforeUnload); 
 });
 onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload', handleBeforeUnload); });
 </script>
 
 <style scoped>
-/* រក្សាទុកស្ទីលទំហំ 1024px រត់ចំកណ្តាល Browser និង Responsive សម្រាប់ Mobile */
-.ptt-dashboard { display: flex; width: 1024px; min-width: 1024px; height: 680px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); font-family: sans-serif; overflow: hidden; margin: 0 auto; }
-.panel-left { width: 45%; padding: 15px; border-right: 1px solid #eee; display: flex; flex-direction: column; align-items: center; justify-content: space-between; position: relative; gap: 10px; }
-.panel-right { width: 55%; padding: 20px; display: flex; flex-direction: column; background: #fafafa; }
+.ptt-dashboard { display: flex; width: 100%; max-width: 1024px; height: 680px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); font-family: sans-serif; overflow: hidden; margin: 0 auto; }
+.panel-left { width: 45%; padding: 15px; border-right: 1px solid #eee; display: flex; flex-direction: column; align-items: center; justify-content: space-between; position: relative; gap: 10px; box-sizing: border-box; }
+.panel-right { width: 55%; padding: 20px; display: flex; flex-direction: column; background: #fafafa; box-sizing: border-box; }
 
 /* ស្ទីល Dropdown ជ្រើសរើសក្រុម */
 .group-selector-box { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 5px; }
@@ -324,7 +398,32 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .txt-online { color: #2ecc71; font-weight: bold; }
 .txt-offline { color: #e74c3c; font-weight: bold; }
 .badge-online { background: #2ecc71; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
-.btn-unlock-audio { background: #f1c40f; color: #2c3e50; border: none; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; cursor: pointer; animation: pulse 1.5s infinite; }
+.btn-unlock-audio {
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+.btn-unlock-audio.audio-locked {
+  background: #f1c40f;
+  color: #2c3e50;
+  animation: pulse 1.5s infinite;
+}
+.btn-unlock-audio.audio-active {
+  background: #2ecc71;
+  color: white;
+}
+.btn-unlock-audio.audio-muted {
+  background: #e74c3c;
+  color: white;
+}
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 .ptt-btn { width: 110px; height: 110px; border-radius: 50%; border: none; font-size: 11px; font-weight: bold; color: white; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 8px rgba(0,0,0,0.1); user-select: none; -webkit-user-select: none; }
 .idle { background: #3498db; } .talking { background: #2ecc71; } .busy { background: #e74c3c; }
@@ -333,6 +432,25 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .member-list { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .member-item { display: flex; justify-content: space-between; align-items: center; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #edf2f7; }
 .member-info { display: flex; align-items: center; gap: 8px; }
+.member-avatar {
+  width: 24px;
+  height: 24px;
+  background: #edf2f7;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 11px;
+  overflow: hidden;
+}
+.member-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
 .status-dot { font-size: 11px; }
 .member-name { font-size: 13px; font-weight: 500; color: #2d3748; }
 .is-me { color: #3182ce; font-weight: bold; }
@@ -361,8 +479,10 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .chat-input button { padding: 8px 15px; background: #2c3e50; color: white; border: none; border-radius: 4px; }
 
 @media (max-width: 1024px) {
-  .ptt-dashboard { flex-direction: column; width: 100%; min-width: 100%; height: auto; border-radius: 0; margin: 0; }
-  .panel-left, .panel-right { width: 100%; }
-  .panel-right { height: 450px; }
+  .ptt-dashboard { flex-direction: column; height: auto; border-radius: 0; margin: 0; box-shadow: none; }
+  .panel-left, .panel-right { width: 100%; border-right: none; }
+  .panel-left { border-bottom: 1px solid #eee; padding: 15px; }
+  .panel-right { height: 480px; padding: 15px; }
+  .member-box { max-height: 220px; }
 }
 </style>

@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             'name' => 'Admin',
             'email' => 'admin@realptt.com',
             'password' => Hash::make('password123'), // Password សម្រាប់ Login
+            'role' => 'admin',
         ]);
 
         print("\n✅ User តេស្តត្រូវបានបង្កើតជោគជ័យ! (Email: test@realptt.com | Pass: password123)\n");

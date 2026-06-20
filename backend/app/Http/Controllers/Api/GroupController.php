@@ -26,8 +26,8 @@ class GroupController extends Controller
             return response()->json(['message' => 'រកមិនឃើញក្រុមនេះទេ'], 404);
         }
 
-        // ទាញយកតែសសរស្ដម្ភ 'name' (Display Name) ចេញពីតារាង users
-        $members = $group->users()->pluck('name'); 
+        // ទាញយកឈ្មោះ និង avatar ចេញពីតារាង users
+        $members = $group->users()->select('users.name', 'users.avatar')->get(); 
 
         return response()->json([
             'group_name' => $group->name,

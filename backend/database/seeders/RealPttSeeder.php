@@ -29,7 +29,7 @@ class RealPttSeeder extends Seeder
         // ២. បង្កើតគណនីអ្នកប្រើប្រាស់គំរូ ៣ នាក់ (បើមាន admin រួចហើយ វានឹងមិនបង្កើតជាន់ទេ)
         $admin = User::firstOrCreate(
             ['email' => 'admin@gmail.com'],
-            ['name' => 'admin', 'password' => Hash::make('password')]
+            ['name' => 'admin', 'password' => Hash::make('password'), 'role' => 'admin']
         );
 
         $user01 = User::firstOrCreate(

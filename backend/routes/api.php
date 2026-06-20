@@ -27,5 +27,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/my-groups', [GroupController::class, 'myGroups']);
     Route::get('/groups/{id}/members', [GroupController::class, 'groupMembers']);
-    
+    Route::put('/profile', [\App\Http\Controllers\Api\UserController::class, 'updateProfile']);
+
+    // User Management for Admins Only
+    Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->group(function () {
+        Route::get('/users', [\App\Http\Controllers\Api\UserController::class, 'index']);
+        Route::post('/users', [\App\Http\Controllers\Api\UserController::class, 'store']);
+        Route::put('/users/{id}', [\App\Http\Controllers\Api\UserController::class, 'update']);
+        Route::delete('/users/{id}', [\App\Http\Controllers\Api\UserController::class, 'destroy']);
+        Route::get('/all-groups', [\App\Http\Controllers\Api\UserController::class, 'getGroups']);
+    });
 });
