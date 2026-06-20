@@ -379,11 +379,15 @@ body {
 }
 
 .header-bar {
-  margin-bottom: 20px;
+  margin: 20px auto;
+  max-width: 1024px;
+  width: calc(100% - 40px);
   background: #2c3e50;
   color: white;
   padding: 10px 20px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  box-sizing: border-box;
 }
 
 .header-container {
@@ -823,7 +827,7 @@ body {
 }
 
 .content-body {
-  padding: 0 20px 40px 20px;
+  padding: 0 0px 40px 0px;
   display: flex;
   justify-content: center;
 }
@@ -831,7 +835,10 @@ body {
 @media (max-width: 768px) {
   .header-bar {
     padding: 15px;
-    margin-bottom: 0;
+    width: 100%;
+    margin: 0 0 15px 0;
+    border-radius: 0;
+    box-shadow: none;
   }
   .header-container {
     flex-direction: column;
