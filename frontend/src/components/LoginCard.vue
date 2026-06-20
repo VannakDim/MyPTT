@@ -1,7 +1,7 @@
 <template>
   <div class="login-wrapper">
     <div class="login-card">
-      <h2>RealPTT Platform Login</h2>
+      <h2>CamboCom Platform Login</h2>
       <p class="subtitle">សូមបញ្ចូលគណនីរបស់អ្នកដើម្បីភ្ជាប់ទៅកាន់ Voice Server</p>
       
       <form @submit.prevent="handleSubmit">

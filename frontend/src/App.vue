@@ -7,7 +7,7 @@
         <div class="header-container">
           <div class="brand">
             <span class="logo-icon">📻</span>
-            <span class="logo-text">RealPTT Clone</span>
+            <span class="logo-text">CamboCom</span>
           </div>
           
           <!-- Navigation Tabs for Admin -->
