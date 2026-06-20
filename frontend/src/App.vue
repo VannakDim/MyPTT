@@ -834,28 +834,39 @@ body {
 
 @media (max-width: 768px) {
   .header-bar {
-    padding: 15px;
+    padding: 12px 15px;
     width: 100%;
     margin: 0 0 15px 0;
     border-radius: 0;
     box-shadow: none;
   }
   .header-container {
-    flex-direction: column;
-    gap: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
     align-items: center;
-    text-align: center;
-  }
-  .nav-tabs {
     width: 100%;
-    justify-content: center;
+    gap: 10px;
+  }
+  .brand {
+    order: 1;
   }
   .user-actions {
-    flex-direction: column;
-    gap: 10px;
+    order: 2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .nav-tabs {
+    order: 3;
     width: 100%;
     justify-content: center;
-    align-items: center;
+    margin-top: 8px;
+  }
+  .dropdown-menu {
+    right: 0;
+    left: auto;
+    top: 45px;
   }
   .content-body {
     padding: 0;
