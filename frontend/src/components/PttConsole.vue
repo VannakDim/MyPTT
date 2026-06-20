@@ -83,7 +83,7 @@
         </button>
       </div>
 
-      <div v-if="showLogs" class="logs-container">
+      <div v-if="showLogs" class="logs-container" ref="logsRef">
         <h4>System Logs:</h4>
         <ul><li v-for="(log, i) in logs" :key="i">{{ log }}</li></ul>
       </div>
@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue';
 
 const props = defineProps({ userToken: { type: String, required: true } });
 const username = localStorage.getItem('ptt_username') || 'admin'; 
@@ -176,6 +176,25 @@ const showLogs = ref(false);
 const chatMessages = ref([]);
 const typedText = ref("");
 const chatRef = ref(null);
+const logsRef = ref(null);
+
+const scrollToBottomLogs = () => {
+  nextTick(() => {
+    if (logsRef.value) {
+      logsRef.value.scrollTop = logsRef.value.scrollHeight;
+    }
+  });
+};
+
+watch(logs, () => {
+  scrollToBottomLogs();
+}, { deep: true });
+
+watch(showLogs, (newVal) => {
+  if (newVal) {
+    scrollToBottomLogs();
+  }
+});
 
 let ws = null;
 let recordCtx = null; let sourceNode = null; let processorNode = null;
