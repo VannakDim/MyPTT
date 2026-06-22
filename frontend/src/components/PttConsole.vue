@@ -270,8 +270,8 @@ const fetchGroupMembers = async (groupId) => {
     });
     if (response.ok) {
       const data = await response.json();
-      console.log(`✅ សមាជិកក្នុងក្រុម ID ${groupId}:`, data.members);
-      allRegisteredUsers.value = data.members;
+      console.log(`✅ សមាជិកក្នុងក្រុម ID ${groupId}:`, data);
+      allRegisteredUsers.value = Array.isArray(data) ? data : (data.members || []);
     }
   } catch (error) {
     console.error("Error fetching group members:", error);
