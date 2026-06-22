@@ -26,12 +26,10 @@ class GroupController extends Controller
             return response()->json(['message' => 'រកមិនឃើញក្រុមនេះទេ'], 404);
         }
 
-        // ទាញយកឈ្មោះ និង avatar ចេញពីតារាង users
-        $members = $group->users()->select('users.name', 'users.avatar')->get(); 
+        // ទាញយកទិន្នន័យ User ទាំងអស់ + avatar ចេញពីតារាង users
+        $members = $group->users()->select('users.id', 'users.name', 'users.email', 'users.role', 'users.avatar')->get();
 
-        return response()->json([
-            'group_name' => $group->name,
-            'members' => $members
-        ]);
+        // Return ជា plain array ផ្ទាល់ (ងាយ parse ក្នុង Flutter)
+        return response()->json($members);
     }
 }

@@ -1,0 +1,13 @@
+🔑 គណនីសម្រាប់តេស្តសាកល្បង៖
+ខ្ញុំបានដំណើរការ Migration និង Seeders នៅក្នុង Docker Container រួចរាល់ហើយ លោកអ្នកអាចយកគណនីខាងក្រោមទៅ Login តេស្តបានភ្លាមៗ៖
+
+១. គណនី Admin (ឃើញផ្ទាំងគ្រប់គ្រងអ្នកប្រើប្រាស់)
+គណនីទី ១៖
+Email: admin@realptt.com
+Password: password123
+គណនីទី ២៖
+Email: admin@gmail.com
+Password: password
+២. គណនីបុគ្គលិកធម្មតា (មិនឃើញផ្ទាំងគ្រប់គ្រងទេ គឺចូលទៅកាន់កន្លែងនិយាយទូរស័ព្ទផ្ទាល់)
+Email: security_01@gmail.com
+Password: password
