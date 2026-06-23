@@ -200,6 +200,10 @@ let ws = null;
 let recordCtx = null; let sourceNode = null; let processorNode = null;
 let playCtx = null;
 
+const peerConnections = new Map();
+let localStream = null;
+let localTrack = null;
+
 // ========================================================
 // 🟢 មុខងារទាញយកក្រុមចេញពី LARAVEL BACKEND + DEBUG LOGS
 // ========================================================
@@ -294,6 +298,7 @@ const handleGroupChange = async () => {
 
   await fetchGroupMembers(targetGroup.id);
 
+  cleanupAllPeers();
   if (ws) ws.close();
   connectWS();
 };
@@ -346,23 +351,55 @@ const connectWS = () => {
         const data = JSON.parse(event.data);
         if (data && data.type === 'user_count') {
           onlineUsersCount.value = Number(data.count) || 0;
-          if (Array.isArray(data.user_list)) onlineUserList.value = data.user_list.map(name => String(name).toLowerCase());
+          if (Array.isArray(data.user_list)) {
+            const newOnlineList = data.user_list.map(name => String(name).toLowerCase());
+            
+            // Clean up users that are no longer online
+            for (const peerUsername of peerConnections.keys()) {
+              if (!newOnlineList.includes(peerUsername.toLowerCase())) {
+                cleanupPeer(peerUsername);
+              }
+            }
+            
+            onlineUserList.value = newOnlineList;
+            
+            // Initiate connections for newly online users
+            for (const name of data.user_list) {
+              if (String(name).toLowerCase() === String(username).toLowerCase()) continue;
+              
+              if (!peerConnections.has(name)) {
+                // If I am lexicographically smaller, I initiate the offer
+                if (String(username).toLowerCase() < String(name).toLowerCase()) {
+                  initiateOffer(name);
+                }
+              }
+            }
+          }
         } 
         else if (data && (data.type === 'chat' || data.type === 'file')) {
           chatMessages.value.push(data);
           await nextTick(); 
           if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
         } 
+        else if (data && data.type === 'webrtc_signal') {
+          handleWebrtcSignal(data);
+        }
         else if (data && data.type === 'call_signal') {
           handleCallSignal(data);
         }
         else if (data && data.type === 'ptt_status') {
           if (data.status === 'talking_granted') {
-            pttState.value = 'talking'; pttButtonText.value = '🎙️ អ្នកកំពុងនិយាយ...'; startRecording();
+            pttState.value = 'talking'; 
+            pttButtonText.value = '🎙️ អ្នកកំពុងនិយាយ...'; 
+            if (localTrack) localTrack.enabled = true;
           } else if (data.status === 'line_busy') {
-            pttState.value = 'busy'; pttButtonText.value = '❌ ខ្សែរវល់';
+            pttState.value = 'busy'; 
+            pttButtonText.value = '❌ ខ្សែរវល់';
+            if (localTrack) localTrack.enabled = false;
           } else if (data.status === 'idle') {
-            pttState.value = 'idle'; pttButtonText.value = 'ចុចជាប់ដើម្បីនិយាយ (PTT)';
+            pttState.value = 'idle'; 
+            pttButtonText.value = 'ចុចជាប់ដើម្បីនិយាយ (PTT)';
+            if (localTrack) localTrack.enabled = false;
           }
         } else if (data && data.type === 'system') {
           logs.value.push(data.message);
@@ -370,7 +407,184 @@ const connectWS = () => {
       } catch (err) { console.error(err); }
     }
   };
-  ws.onclose = () => { systemStatus.value = "Disconnected"; stopCallAudio(); };
+  ws.onclose = () => { systemStatus.value = "Disconnected"; cleanupAllPeers(); stopCallAudio(); };
+};
+
+// --- WebRTC P2P Mesh group PTT helper functions ---
+const getOrCreatePeerConnection = async (peerUsername) => {
+  if (peerConnections.has(peerUsername)) {
+    return peerConnections.get(peerUsername);
+  }
+
+  if (!localStream) {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      localTrack = localStream.getAudioTracks()[0];
+      localTrack.enabled = pttState.value === 'talking';
+    } catch (err) {
+      console.error("Failed to get local user media", err);
+      logs.value.push(`កំហុស៖ មិនអាចបើក Microphone បានទេ៖ ${err.message}`);
+    }
+  }
+
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+  });
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream);
+    });
+  }
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate && ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        action: "webrtc_signal",
+        target: peerUsername,
+        payload: {
+          type: "candidate",
+          candidate: event.candidate
+        }
+      }));
+    }
+  };
+
+  pc.ontrack = (event) => {
+    console.log(`Received remote track from ${peerUsername}`);
+    logs.value.push(`ប្រព័ន្ធ៖ ទទួលបានសំឡេងពី ${peerUsername}`);
+    
+    const remoteStream = event.streams[0] || new MediaStream([event.track]);
+    
+    let audioEl = document.getElementById(`audio-${peerUsername}`);
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.id = `audio-${peerUsername}`;
+      audioEl.autoplay = true;
+      document.body.appendChild(audioEl);
+    }
+    audioEl.srcObject = remoteStream;
+    audioEl.play().catch(e => console.error("Playback error", e));
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log(`Connection state with ${peerUsername}: ${pc.connectionState}`);
+    logs.value.push(`ប្រព័ន្ធ៖ ស្ថានភាពតភ្ជាប់ជាមួយ ${peerUsername} គឺ ${pc.connectionState}`);
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      cleanupPeer(peerUsername);
+    }
+  };
+
+  peerConnections.set(peerUsername, pc);
+  return pc;
+};
+
+const initiateOffer = async (peerUsername) => {
+  try {
+    const pc = await getOrCreatePeerConnection(peerUsername);
+    
+    // Temporarily enable track for active SDP generation
+    if (localTrack) localTrack.enabled = true;
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    // Restore actual state
+    if (localTrack) localTrack.enabled = pttState.value === 'talking';
+    
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        action: "webrtc_signal",
+        target: peerUsername,
+        payload: {
+          type: "offer",
+          sdp: pc.localDescription.sdp
+        }
+      }));
+    }
+  } catch (err) {
+    console.error(`Failed to create offer for ${peerUsername}`, err);
+  }
+};
+
+const handleWebrtcSignal = async (data) => {
+  const peerUsername = data.sender;
+  const payload = data.payload;
+
+  try {
+    const pc = await getOrCreatePeerConnection(peerUsername);
+
+    if (payload.type === "offer") {
+      // Temporarily enable track for active SDP generation
+      if (localTrack) localTrack.enabled = true;
+      
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: "offer",
+        sdp: payload.sdp
+      }));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      
+      // Restore actual state
+      if (localTrack) localTrack.enabled = pttState.value === 'talking';
+      
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          action: "webrtc_signal",
+          target: peerUsername,
+          payload: {
+            type: "answer",
+            sdp: pc.localDescription.sdp
+          }
+        }));
+      }
+    } else if (payload.type === "answer") {
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: "answer",
+        sdp: payload.sdp
+      }));
+    } else if (payload.type === "candidate") {
+      if (payload.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      }
+    }
+  } catch (err) {
+    console.error(`Error processing WebRTC signal from ${peerUsername}`, err);
+  }
+};
+
+const cleanupPeer = (peerUsername) => {
+  const pc = peerConnections.get(peerUsername);
+  if (pc) {
+    pc.close();
+    peerConnections.delete(peerUsername);
+  }
+  const audioEl = document.getElementById(`audio-${peerUsername}`);
+  if (audioEl) {
+    audioEl.srcObject = null;
+    audioEl.remove();
+  }
+};
+
+const cleanupAllPeers = () => {
+  for (const peerUsername of peerConnections.keys()) {
+    cleanupPeer(peerUsername);
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+    localTrack = null;
+  }
 };
 
 // --- WebRTC Call, PTT Recording & Audio Playback ---

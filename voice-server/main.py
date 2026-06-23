@@ -84,6 +84,16 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                         "sender": username
                     })
 
+                # --- WebRTC Group PTT Signaling Relay ---
+                elif action == "webrtc_signal":
+                    target = data.get("target")
+                    payload = data.get("payload")
+                    await manager.send_to_user(channel, target, {
+                        "type": "webrtc_signal",
+                        "sender": username,
+                        "payload": payload
+                    })
+
     except WebSocketDisconnect:
         # ដក Client ភ្លាមៗពេលដាច់ Connection ឬចាកចេញ
         await manager.disconnect(channel, websocket)

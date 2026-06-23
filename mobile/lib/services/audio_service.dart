@@ -64,8 +64,6 @@ class AudioService {
     }
 
     _recorder = FlutterSoundRecorder();
-
-    await _recorder!.openRecorder();
     _isRecorderInitialized = true;
 
     // Initialize flutter_pcm_sound for output stream
@@ -114,6 +112,11 @@ class AudioService {
 
     // Clean up any existing recording/subscription to prevent leaks
     await stopRecording();
+
+    if (_recorder == null) {
+      _recorder = FlutterSoundRecorder();
+    }
+    await _recorder!.openRecorder();
 
     _onDataReceivedCallback = onDataReceived;
     _accumulationBuffer.clear();
@@ -167,8 +170,11 @@ class AudioService {
     _onDataReceivedCallback = null;
 
     try {
-      if (_recorder!.isRecording) {
-        await _recorder!.stopRecorder();
+      if (_recorder != null) {
+        if (_recorder!.isRecording) {
+          await _recorder!.stopRecorder();
+        }
+        await _recorder!.closeRecorder();
       }
     } catch (e) {
       // Ignore recorder state errors if already stopped

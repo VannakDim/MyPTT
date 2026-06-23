@@ -11,6 +11,7 @@ import '../services/websocket_service.dart';
 import '../services/audio_service.dart';
 import '../services/notification_service.dart';
 import '../services/ringtone_service.dart';
+import '../services/webrtc_service.dart';
 import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
 
@@ -37,6 +38,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   final _audioService = AudioService();
   final _notificationService = NotificationService();
   final _ringtoneService = RingtoneService();
+  WebRTCService? _webrtcService;
   final List<Color> _presetColors = [
     Colors.blue, Colors.green, Colors.orange, Colors.red, Colors.purple, Colors.teal, Colors.amber, Colors.blueGrey
   ];
@@ -148,13 +150,13 @@ class ConsoleTabState extends State<ConsoleTab> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _currentUsername = prefs.getString('ptt_username') ?? 'admin';
+      _webrtcService = WebRTCService(_wsService, _currentUsername);
     });
   }
 
   Future<void> _initAudio() async {
     try {
       await _audioService.initialize();
-      await _audioService.startPlaybackStream();
     } catch (e) {
       _addLog("កំហុសសំឡេង៖ មិនអាចផ្ដើមឧបករណ៍សំឡេងបានទេ ($e)");
     }
@@ -185,6 +187,9 @@ class ConsoleTabState extends State<ConsoleTab> {
       _systemStatus = "Connecting...";
     });
     _wsService.disconnect();
+    
+    _webrtcService?.dispose();
+    _webrtcService = WebRTCService(_wsService, _currentUsername);
 
     _wsService.connect(
       channelName: channelName,
@@ -243,12 +248,13 @@ class ConsoleTabState extends State<ConsoleTab> {
           setState(() {
             if (status == 'talking_granted') {
               _pttState = "talking";
-              _startMicStreaming();
+              _webrtcService?.setMute(false);
             } else if (status == 'line_busy') {
               _pttState = "busy";
+              _webrtcService?.setMute(true);
             } else {
               _pttState = "idle";
-              _audioService.stopRecording();
+              _webrtcService?.setMute(true);
             }
           });
           _broadcastPttStatus(status == 'talking_granted' ? 'talking' : (status == 'line_busy' ? 'busy' : 'idle'));
@@ -257,6 +263,12 @@ class ConsoleTabState extends State<ConsoleTab> {
           setState(() {
             _onlineUserList = list.map((e) => e.toString().toLowerCase()).toList();
           });
+          final List<String> stringUserList = list.map((e) => e.toString()).toList();
+          _webrtcService?.updatePeers(stringUserList);
+        } else if (type == 'webrtc_signal') {
+          final sender = frame['sender'] as String;
+          final payload = frame['payload'] as Map<String, dynamic>;
+          _webrtcService?.handleSignal(sender, payload);
         } else if (type == 'call_signal') {
           _handleCallSignal(frame);
         }
@@ -309,10 +321,12 @@ class ConsoleTabState extends State<ConsoleTab> {
         // Stop ringing when connected
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
+        _audioService.startPlaybackStream();
         _startMicStreaming();
       } else if (status == 'call_rejected') {
         _callMode = "idle";
         _audioService.stopRecording();
+        _audioService.stopPlaybackStream();
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -321,6 +335,7 @@ class ConsoleTabState extends State<ConsoleTab> {
       } else if (status == 'call_hungup') {
         _callMode = "idle";
         _audioService.stopRecording();
+        _audioService.stopPlaybackStream();
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
         _addLog("ប្រព័ន្ធ៖ $sender បានដាក់ទូរស័ព្ទចុះ។");
@@ -436,6 +451,7 @@ class ConsoleTabState extends State<ConsoleTab> {
       _callMode = "connected";
       _callStatusText = "🟢 កំពុងនិយាយជាមួយ...";
     });
+    _audioService.startPlaybackStream();
     _startMicStreaming();
   }
 
@@ -449,6 +465,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   void _hangupCall() {
     _wsService.sendAction("call_hungup", {'target': _activeCallUser});
     _audioService.stopRecording();
+    _audioService.stopPlaybackStream();
     setState(() {
       _callMode = "idle";
     });
@@ -1037,6 +1054,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   @override
   void dispose() {
     _wsService.disconnect();
+    _webrtcService?.dispose();
     _audioService.dispose();
     _ringtoneService.dispose();
     _chatController.dispose();
