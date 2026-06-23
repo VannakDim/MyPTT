@@ -6,7 +6,7 @@ import '../models/user.model.dart';
 
 class ApiService {
   // 🟢 កំណត់ IP របស់ Laravel backend (កែសម្រួលតាម IP ម៉ាស៊ីនរបស់អ្នក)
-  static const String baseUrl = "http://192.168.100.11:8000";
+  static const String baseUrl = "https://api-ptt.stpmtelecom.com";
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();

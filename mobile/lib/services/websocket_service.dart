@@ -4,7 +4,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebSocketService {
   // 🟢 កំណត់អាសយដ្ឋាន IP សម្រាប់តភ្ជាប់ទៅ Voice Server (FastAPI)
-  static const String wsUrl = "ws://192.168.100.11:9000";
+  static const String wsUrl = "wss://api-ptt.stpmtelecom.com";
 
   WebSocketChannel? _channel;
   bool isConnected = false;
@@ -60,12 +60,14 @@ class WebSocketService {
       'action': action,
       ...params,
     };
+    print("[WS Outgoing JSON] Action: $action, payload: $payload");
     _channel!.sink.add(jsonEncode(payload));
   }
 
   // ៣. ផ្ញើកញ្ចប់សំឡេងជាទម្រង់ Binary PCM (Send Audio Bytes)
   void sendAudio(Uint8List audioBytes) {
     if (_channel == null || !isConnected) return;
+    print("[WS Outgoing Audio] Sending ${audioBytes.length} bytes");
     _channel!.sink.add(audioBytes);
   }
 

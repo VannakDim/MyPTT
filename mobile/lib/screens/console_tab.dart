@@ -49,7 +49,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   String _pttState = "idle"; // 'idle', 'talking', 'busy'
 
   // Draggable PTT Position
-  Offset _pttPosition = const Offset(200, 350);
+  late final ValueNotifier<Offset> _pttPositionNotifier = ValueNotifier<Offset>(const Offset(200, 350));
   bool _positionInitialized = false;
 
   // State variables for in-app PTT Listener
@@ -116,8 +116,10 @@ class ConsoleTabState extends State<ConsoleTab> {
     super.didChangeDependencies();
     if (!_positionInitialized) {
       final size = MediaQuery.of(context).size;
-      _pttPosition = Offset(size.width - 120, size.height - 240);
-      _positionInitialized = true;
+      if (size.width > 0 && size.height > 0) {
+        _pttPositionNotifier.value = Offset(size.width - 120, size.height - 240);
+        _positionInitialized = true;
+      }
     }
   }
 
@@ -206,12 +208,15 @@ class ConsoleTabState extends State<ConsoleTab> {
   }
 
   void _handleIncomingData(dynamic data) async {
-    if (data is Uint8List) {
-      _audioService.playChunk(data);
+    if (data is List<int>) {
+      debugPrint("[IncomingData] Binary chunk received: ${data.length} bytes, type: ${data.runtimeType}");
+      final chunk = data is Uint8List ? data : Uint8List.fromList(data);
+      _audioService.playChunk(chunk);
       return;
     }
 
     if (data is String) {
+      debugPrint("[IncomingData] JSON string received: $data");
       try {
         final Map<String, dynamic> frame = jsonDecode(data);
         final type = frame['type'];
@@ -326,7 +331,8 @@ class ConsoleTabState extends State<ConsoleTab> {
   void _startMicStreaming() async {
     try {
       await _audioService.startRecording((bytes) {
-        if (_wsService.isConnected) {
+        final bool canTransmit = (_pttState == 'talking') || (_callMode == 'connected');
+        if (_wsService.isConnected && canTransmit) {
           _wsService.sendAudio(bytes);
         }
       });
@@ -684,6 +690,8 @@ class ConsoleTabState extends State<ConsoleTab> {
       pttBtnColor = const Color(0xFF2ECC71);
     } else if (_pttState == "busy") {
       pttBtnColor = const Color(0xFFEF4444);
+    } else if (_isPttActiveInApp) {
+      pttBtnColor = const Color(0xFFF59E0B);
     }
 
     return Stack(
@@ -915,15 +923,21 @@ class ConsoleTabState extends State<ConsoleTab> {
         
         // Draggable Floating PTT Button Card
         if (hasChannel)
-          Positioned(
-            left: _pttPosition.dx,
-            top: _pttPosition.dy,
+          ValueListenableBuilder<Offset>(
+            valueListenable: _pttPositionNotifier,
+            builder: (context, position, child) {
+              return Positioned(
+                left: position.dx,
+                top: position.dy,
+                child: child!,
+              );
+            },
             child: Listener(
               onPointerDown: (event) {
                 // Record start position
                 _pttTouchStartX = event.position.dx;
                 _pttTouchStartY = event.position.dy;
-                _pttInitialPosition = _pttPosition;
+                _pttInitialPosition = _pttPositionNotifier.value;
                 _isDraggingPtt = false;
                 if (mounted) setState(() { _isPttActiveInApp = true; });
                 _handlePttStart();
@@ -940,13 +954,11 @@ class ConsoleTabState extends State<ConsoleTab> {
                   }
                   _isDraggingPtt = true;
                 }
-                if (_isDraggingPtt && mounted) {
-                  setState(() {
-                    final size = MediaQuery.of(context).size;
-                    final double newX = (_pttInitialPosition.dx + dx).clamp(0.0, size.width - 90);
-                    final double newY = (_pttInitialPosition.dy + dy).clamp(50.0, size.height - 150);
-                    _pttPosition = Offset(newX, newY);
-                  });
+                if (_isDraggingPtt) {
+                  final size = MediaQuery.of(context).size;
+                  final double newX = (_pttInitialPosition.dx + dx).clamp(0.0, size.width - 90);
+                  final double newY = (_pttInitialPosition.dy + dy).clamp(50.0, size.height - 150);
+                  _pttPositionNotifier.value = Offset(newX, newY);
                 }
               },
               onPointerUp: (event) {
@@ -964,7 +976,14 @@ class ConsoleTabState extends State<ConsoleTab> {
                 if (mounted) setState(() { _isPttActiveInApp = false; });
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration: const Duration(milliseconds: 80),
+                curve: Curves.easeOut,
+                transformAlignment: Alignment.center,
+                transform: Matrix4.diagonal3Values(
+                  _isPttActiveInApp ? 0.92 : 1.0,
+                  _isPttActiveInApp ? 0.92 : 1.0,
+                  1.0,
+                ),
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
@@ -1023,6 +1042,7 @@ class ConsoleTabState extends State<ConsoleTab> {
     _chatController.dispose();
     _chatScrollController.dispose();
     _logsScrollController.dispose();
+    _pttPositionNotifier.dispose();
     super.dispose();
   }
 }
