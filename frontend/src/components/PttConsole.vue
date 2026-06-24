@@ -103,7 +103,7 @@
           </div>
           <p v-if="msg.type === 'chat'" class="msg-text">
             <span>{{ msg.text }}</span>
-            <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+            <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
           </p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
             <img v-if="msg.file_type && msg.file_type.startsWith('image/')" :src="getFileUrl(msg)" class="preview-img" />
@@ -112,7 +112,7 @@
                 📁 ឯកសារ៖ {{ msg.file_name }}
               </a>
               <span v-else class="image-name">{{ msg.file_name }}</span>
-              <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
             </div>
           </div>
           <div v-else-if="msg.type === 'voice'" class="msg-voice">
@@ -120,7 +120,7 @@
               <button @click="playVoice(getFileUrl(msg))" class="voice-btn">
                 {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់...' : '🔊 សារសំឡេង PTT' }}
               </button>
-              <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
             </div>
           </div>
         </div>
@@ -238,6 +238,18 @@ const formatMessageTime = (msg) => {
   } else {
     return timeStr;
   }
+};
+
+const shouldShowTime = (msg, index) => {
+  if (index === 0) return true;
+  const prevMsg = chatMessages.value[index - 1];
+  if (!prevMsg) return true;
+  
+  // Check if same sender and same formatted time
+  const sameSender = getMessageSenderName(msg) === getMessageSenderName(prevMsg);
+  const sameTime = formatMessageTime(msg) === formatMessageTime(prevMsg);
+  
+  return !(sameSender && sameTime);
 };
 
 const getFileUrl = (msg) => {
