@@ -101,17 +101,27 @@
             </div>
             <span class="msg-user-name">{{ getMessageSenderName(msg) }}</span>
           </div>
-          <p v-if="msg.type === 'chat'" class="msg-text">{{ msg.text }}</p>
+          <p v-if="msg.type === 'chat'" class="msg-text">
+            <span>{{ msg.text }}</span>
+            <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+          </p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
             <img v-if="msg.file_type && msg.file_type.startsWith('image/')" :src="getFileUrl(msg)" class="preview-img" />
-            <a v-else :href="getFileUrl(msg)" :download="msg.file_name" target="_blank" class="download-link">
-              📁 ឯកសារ៖ {{ msg.file_name }} (ទាញយក)
-            </a>
+            <div class="file-meta">
+              <a v-if="!(msg.file_type && msg.file_type.startsWith('image/'))" :href="getFileUrl(msg)" :download="msg.file_name" target="_blank" class="download-link">
+                📁 ឯកសារ៖ {{ msg.file_name }}
+              </a>
+              <span v-else class="image-name">{{ msg.file_name }}</span>
+              <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+            </div>
           </div>
           <div v-else-if="msg.type === 'voice'" class="msg-voice">
-            <button @click="playVoice(getFileUrl(msg))" class="voice-btn">
-              {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់សំឡេង...' : '🔊 សារសំឡេង PTT' }}
-            </button>
+            <div class="voice-meta">
+              <button @click="playVoice(getFileUrl(msg))" class="voice-btn">
+                {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់...' : '🔊 សារសំឡេង PTT' }}
+              </button>
+              <span class="msg-time">{{ formatMessageTime(msg) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -207,6 +217,27 @@ const getMessageSenderAvatar = (msg) => {
   }
   const user = allRegisteredUsers.value.find(u => String(u.name).toLowerCase() === String(name).toLowerCase());
   return user ? user.avatar : null;
+};
+
+const formatMessageTime = (msg) => {
+  const dateStr = msg.created_at;
+  if (!dateStr) return '';
+  
+  const msgDate = new Date(dateStr);
+  if (isNaN(msgDate.getTime())) return '';
+  
+  const now = new Date();
+  const diffMs = now.getTime() - msgDate.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  const timeStr = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  
+  if (diffHours >= 24) {
+    const datePart = msgDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `${datePart} ${timeStr}`;
+  } else {
+    return timeStr;
+  }
 };
 
 const getFileUrl = (msg) => {
@@ -512,6 +543,9 @@ const connectWS = () => {
           }
         } 
         else if (data && (data.type === 'chat' || data.type === 'file')) {
+          if (!data.created_at) {
+            data.created_at = new Date().toISOString();
+          }
           chatMessages.value.push(data);
           await nextTick(); 
           if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
@@ -929,12 +963,36 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
   box-shadow: 0 1.5px 2px rgba(0,0,0,0.06);
   line-height: 1.4;
   word-break: break-word;
+  display: flex;
+  flex-direction: column;
 }
 .msg-me .msg-text {
   background: #d9fdd3;
   color: #111;
   border-radius: 12px 12px 4px 12px;
   box-shadow: 0 1.5px 2px rgba(0,0,0,0.08);
+}
+.msg-time {
+  font-size: 9px;
+  color: #8c9094;
+  align-self: flex-end;
+  margin-top: 4px;
+  margin-left: 8px;
+  user-select: none;
+}
+.msg-me .msg-time {
+  color: #638253;
+}
+.file-meta, .voice-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.image-name {
+  font-size: 11px;
+  color: #718096;
 }
 .preview-img { max-width: 140px; max-height: 140px; border-radius: 6px; margin-top: 4px; }
 .download-link { background: #f1f2f6; color: #2f3542; padding: 6px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; border: 1px solid #ddd; margin-top: 4px; }
