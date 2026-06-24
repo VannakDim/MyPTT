@@ -91,7 +91,7 @@
 
     <div class="panel-right">
       <h4>Group Chat & File Sharing</h4>
-      <div class="chat-area" ref="chatRef">
+      <div class="chat-area" ref="chatRef" @scroll="handleScroll">
         <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', (msg.sender || msg.sender_name) === username ? 'msg-me' : '']">
           <span class="msg-user">{{ msg.sender || msg.sender_name }}</span>
           <p v-if="msg.type === 'chat'" class="msg-text">{{ msg.text }}</p>
@@ -269,7 +269,11 @@ const fetchUserGroups = async () => {
         selectedGroupId.value = data[0].id;
         currentChannelName.value = data[0].name;
         await fetchGroupMembers(data[0].id);
-        await fetchGroupMessages(data[0].id);
+        const history = await fetchGroupMessages(data[0].id);
+        chatMessages.value = history;
+        hasMoreMessages.value = history.length >= 15;
+        await nextTick();
+        if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
         return; // ចាកចេញដោយជោគជ័យ
       } else {
         console.warn("⚠️ Laravel បោះអារេទទេមកវិញ [] (គណនីនេះមិនទាន់មានក្រុមក្នុង Database)");
@@ -320,10 +324,17 @@ const fetchGroupMembers = async (groupId) => {
   }
 };
 
-const fetchGroupMessages = async (groupId) => {
+const hasMoreMessages = ref(true);
+const isLoadingMore = ref(false);
+
+const fetchGroupMessages = async (groupId, beforeId = null) => {
   try {
     const cleanToken = props.userToken ? props.userToken.trim() : '';
-    const response = await fetch(`${import.meta.env.VITE_LARAVEL_API_URL}/api/groups/${groupId}/messages`, {
+    let url = `${import.meta.env.VITE_LARAVEL_API_URL}/api/groups/${groupId}/messages`;
+    if (beforeId) {
+      url += `?before_id=${beforeId}`;
+    }
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${cleanToken}`,
@@ -333,12 +344,46 @@ const fetchGroupMessages = async (groupId) => {
     if (response.ok) {
       const data = await response.json();
       console.log(`✅ Message history for group ID ${groupId}:`, data);
-      chatMessages.value = data;
-      await nextTick();
-      if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
+      return data;
     }
   } catch (error) {
     console.error("Error fetching group messages:", error);
+  }
+  return [];
+};
+
+const handleScroll = async () => {
+  if (!chatRef.value || isLoadingMore.value || !hasMoreMessages.value) return;
+  if (chatRef.value.scrollTop === 0) {
+    await loadMoreMessages();
+  }
+};
+
+const loadMoreMessages = async () => {
+  if (chatMessages.value.length === 0 || !selectedGroupId.value) return;
+  
+  isLoadingMore.value = true;
+  try {
+    const oldestMsg = chatMessages.value[0];
+    if (!oldestMsg || !oldestMsg.id) return;
+    
+    const previousHeight = chatRef.value.scrollHeight;
+    
+    const olderMessages = await fetchGroupMessages(selectedGroupId.value, oldestMsg.id);
+    
+    if (olderMessages.length === 0) {
+      hasMoreMessages.value = false;
+    } else {
+      chatMessages.value.unshift(...olderMessages);
+      hasMoreMessages.value = olderMessages.length >= 15;
+      
+      await nextTick();
+      chatRef.value.scrollTop = chatRef.value.scrollHeight - previousHeight;
+    }
+  } catch (error) {
+    console.error("Error loading older messages:", error);
+  } finally {
+    isLoadingMore.value = false;
   }
 };
 
@@ -355,9 +400,15 @@ const handleGroupChange = async () => {
   chatMessages.value = [];
   onlineUserList.value = [];
   onlineUsersCount.value = 0;
+  hasMoreMessages.value = true;
+  isLoadingMore.value = false;
 
   await fetchGroupMembers(targetGroup.id);
-  await fetchGroupMessages(targetGroup.id);
+  const history = await fetchGroupMessages(targetGroup.id);
+  chatMessages.value = history;
+  hasMoreMessages.value = history.length >= 15;
+  await nextTick();
+  if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
 
   cleanupAllPeers();
   if (ws) ws.close();

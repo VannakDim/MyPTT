@@ -115,22 +115,28 @@ class MessageController extends Controller
     /**
      * 2. API for fetching message history for a group.
      */
-    public function index($groupId)
+    public function index(Request $request, $groupId)
     {
         $group = Group::find($groupId);
         if (!$group) {
             return response()->json(['message' => 'Group not found'], 404);
         }
 
-        // Get the last 100 messages, ordered ascending by time so it loads sequentially
-        $messages = Message::where('group_id', $groupId)
-            ->with(['sender' => function ($query) {
+        $query = Message::where('group_id', $groupId);
+
+        if ($request->has('before_id')) {
+            $query->where('id', '<', $request->query('before_id'));
+        }
+
+        // Get the latest 15 messages (by descending ID)
+        $messages = $query->with(['sender' => function ($query) {
                 $query->select('id', 'name', 'avatar');
             }])
-            ->orderBy('created_at', 'asc')
-            ->limit(100)
+            ->orderBy('id', 'desc')
+            ->limit(15)
             ->get();
 
-        return response()->json($messages);
+        // Return reversed to order chronologically (oldest to newest)
+        return response()->json($messages->reverse()->values());
     }
 }

@@ -203,11 +203,14 @@ class ApiService {
   }
 
   // ៩. ទាញយកប្រវត្តិសារក្នុងក្រុម (Get Group Messages history)
-  static Future<List<ChatMessage>> getGroupMessages(int groupId) async {
+  static Future<List<ChatMessage>> getGroupMessages(int groupId, {int? beforeId}) async {
     final headers = await _getHeaders();
     try {
+      final url = beforeId != null
+          ? '$baseUrl/api/groups/$groupId/messages?before_id=$beforeId'
+          : '$baseUrl/api/groups/$groupId/messages';
       final response = await http.get(
-        Uri.parse('$baseUrl/api/groups/$groupId/messages'),
+        Uri.parse(url),
         headers: headers,
       );
 

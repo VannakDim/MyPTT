@@ -100,6 +100,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   @override
   void initState() {
     super.initState();
+    _chatScrollController.addListener(_onChatScroll);
     _initUsername().then((_) {
       _initAudio();
       if (widget.selectedGroup != null) {
@@ -134,6 +135,8 @@ class ConsoleTabState extends State<ConsoleTab> {
       setState(() {
         _chatMessages.clear();
         _logs.clear();
+        _isLoadingMore = false;
+        _hasMoreMessages = true;
       });
       if (widget.selectedGroup != null) {
         _connectWebSocket(widget.selectedGroup!.name);
@@ -185,18 +188,61 @@ class ConsoleTabState extends State<ConsoleTab> {
     }
   }
 
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = true;
+
   Future<void> _fetchGroupMessages(int groupId) async {
     try {
       final messages = await ApiService.getGroupMessages(groupId);
       if (mounted) {
         setState(() {
           _chatMessages.clear();
-          _chatMessages.addAll(messages);
+          _chatMessages.addAll(messages.reversed);
+          _isLoadingMore = false;
+          _hasMoreMessages = messages.length >= 15;
         });
-        _scrollToBottomChat();
       }
     } catch (e) {
       debugPrint("Failed loading group messages: $e");
+    }
+  }
+
+  void _onChatScroll() {
+    if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 200) {
+      _loadMoreMessages();
+    }
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages || widget.selectedGroup == null || _chatMessages.isEmpty) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final oldestMsg = _chatMessages.last;
+      if (oldestMsg.id == null) return;
+
+      final moreMessages = await ApiService.getGroupMessages(widget.selectedGroup!.id, beforeId: oldestMsg.id);
+      if (mounted) {
+        setState(() {
+          if (moreMessages.isEmpty) {
+            _hasMoreMessages = false;
+          } else {
+            _chatMessages.addAll(moreMessages.reversed);
+            _hasMoreMessages = moreMessages.length >= 15;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading more messages: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
     }
   }
 
@@ -249,9 +295,8 @@ class ConsoleTabState extends State<ConsoleTab> {
         } else if (type == 'chat' || type == 'file') {
           final msg = ChatMessage.fromJson(frame, _currentUsername);
           setState(() {
-            _chatMessages.add(msg);
+            _chatMessages.insert(0, msg);
           });
-          _scrollToBottomChat();
           // Notify only for messages from others
           if (!msg.isMe) {
             _ringtoneService.playMessageBeep();
@@ -905,6 +950,7 @@ class ConsoleTabState extends State<ConsoleTab> {
                 child: hasChannel
                     ? ListView.builder(
                         controller: _chatScrollController,
+                        reverse: true,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         itemCount: _chatMessages.length,
                         itemBuilder: (context, i) {
@@ -1155,6 +1201,7 @@ class ConsoleTabState extends State<ConsoleTab> {
     _audioService.dispose();
     _ringtoneService.dispose();
     _chatController.dispose();
+    _chatScrollController.removeListener(_onChatScroll);
     _chatScrollController.dispose();
     _logsScrollController.dispose();
     _pttPositionNotifier.dispose();

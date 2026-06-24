@@ -1,4 +1,5 @@
 class ChatMessage {
+  final int? id;
   final String sender;
   final String type; // 'chat', 'file', 'voice', 'system'
   final String? text;
@@ -10,6 +11,7 @@ class ChatMessage {
   final DateTime? createdAt;
 
   ChatMessage({
+    this.id,
     required this.sender,
     required this.type,
     this.text,
@@ -22,6 +24,7 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json, String currentUsername) {
+    int? idVal = json['id'];
     String senderVal = json['sender'] ?? json['sender_name'] ?? 'System';
     DateTime? timeVal;
     if (json['created_at'] != null) {
@@ -29,6 +32,7 @@ class ChatMessage {
     }
 
     return ChatMessage(
+      id: idVal,
       sender: senderVal,
       type: json['type'] ?? 'chat',
       text: json['text'],
