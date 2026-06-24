@@ -293,6 +293,9 @@ class ConsoleTabState extends State<ConsoleTab> {
         if (type == 'system') {
           _addLog(frame['message'] ?? '');
         } else if (type == 'chat' || type == 'file') {
+          if (frame['created_at'] == null) {
+            frame['created_at'] = DateTime.now().toUtc().toIso8601String();
+          }
           final msg = ChatMessage.fromJson(frame, _currentUsername);
           setState(() {
             _chatMessages.insert(0, msg);
@@ -643,6 +646,58 @@ class ConsoleTabState extends State<ConsoleTab> {
     );
   }
 
+  User? _findMemberByName(String name) {
+    try {
+      return _groupMembers.firstWhere(
+        (u) => u.name.toLowerCase() == name.toLowerCase()
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildSenderAvatar(String senderName) {
+    final user = _findMemberByName(senderName) ?? User(
+      id: 0,
+      name: senderName,
+      email: '',
+      role: 'user',
+    );
+    return _buildMemberAvatar(user);
+  }
+
+  String _formatMessageTime(DateTime? date) {
+    if (date == null) return '';
+    
+    final localDate = date.toLocal();
+    final now = DateTime.now();
+    final diff = now.difference(localDate);
+    
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    final timeStr = "$hour:$minute";
+    
+    if (diff.inHours >= 24) {
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final monthStr = months[localDate.month - 1];
+      final day = localDate.day;
+      return "$monthStr $day $timeStr";
+    } else {
+      return timeStr;
+    }
+  }
+
+  bool _shouldShowTime(int index) {
+    if (index == _chatMessages.length - 1) return true;
+    final msg = _chatMessages[index];
+    final olderMsg = _chatMessages[index + 1];
+    
+    final sameSender = msg.sender.toLowerCase() == olderMsg.sender.toLowerCase();
+    final sameTime = _formatMessageTime(msg.createdAt) == _formatMessageTime(olderMsg.createdAt);
+    
+    return !(sameSender && sameTime);
+  }
+
   Widget _buildMemberAvatar(User user) {
     if (user.avatar != null && user.avatar!.isNotEmpty) {
       try {
@@ -669,7 +724,7 @@ class ConsoleTabState extends State<ConsoleTab> {
     );
   }
 
-  Widget _buildFileShareWidget(ChatMessage msg) {
+  Widget _buildFileShareWidget(ChatMessage msg, int index) {
     final isImage = msg.fileType?.startsWith('image/') ?? false;
 
     if (isImage) {
@@ -698,10 +753,6 @@ class ConsoleTabState extends State<ConsoleTab> {
       }
     }
 
-    final fileUrl = msg.filePath != null
-        ? (msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}')
-        : null;
-
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -709,21 +760,34 @@ class ConsoleTabState extends State<ConsoleTab> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF334155)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.insert_drive_file_rounded, color: Color(0xFF38BDF8), size: 16),
-          const SizedBox(width: 6),
-          Text(
-            msg.fileName ?? 'File',
-            style: const TextStyle(color: Colors.white, fontSize: 11, decoration: TextDecoration.underline),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.insert_drive_file_rounded, color: Color(0xFF38BDF8), size: 16),
+              const SizedBox(width: 6),
+              Text(
+                msg.fileName ?? 'File',
+                style: const TextStyle(color: Colors.white, fontSize: 11, decoration: TextDecoration.underline),
+              ),
+            ],
           ),
+          if (_shouldShowTime(index)) ...[
+            const SizedBox(height: 4),
+            Text(
+              _formatMessageTime(msg.createdAt),
+              style: const TextStyle(color: Colors.white54, fontSize: 9),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildVoiceMessageWidget(ChatMessage msg) {
+  Widget _buildVoiceMessageWidget(ChatMessage msg, int index) {
     final fileUrl = msg.filePath != null
         ? (msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}')
         : null;
@@ -737,44 +801,60 @@ class ConsoleTabState extends State<ConsoleTab> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF334155)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: Icon(isPlaying ? Icons.stop_circle_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () {
-              if (fileUrl != null) {
-                if (isPlaying) {
-                  _audioService.stopUrlPlayer();
-                  setState(() {
-                    _playingVoiceUrl = null;
-                  });
-                } else {
-                  setState(() {
-                    _playingVoiceUrl = fileUrl;
-                  });
-                  _audioService.playUrl(fileUrl, onFinished: () {
-                    if (mounted) {
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(isPlaying ? Icons.stop_circle_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () {
+                  if (fileUrl != null) {
+                    if (isPlaying) {
+                      _audioService.stopUrlPlayer();
                       setState(() {
-                        if (_playingVoiceUrl == fileUrl) {
-                          _playingVoiceUrl = null;
+                        _playingVoiceUrl = null;
+                      });
+                    } else {
+                      setState(() {
+                        _playingVoiceUrl = fileUrl;
+                      });
+                      _audioService.playUrl(fileUrl, onFinished: () {
+                        if (mounted) {
+                          setState(() {
+                            if (_playingVoiceUrl == fileUrl) {
+                              _playingVoiceUrl = null;
+                            }
+                          });
                         }
                       });
                     }
-                  });
-                }
-              }
-            },
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.volume_up_rounded, color: Colors.white70, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                "សារសំឡេង PTT",
+                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          const Icon(Icons.volume_up_rounded, color: Colors.white70, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            "សារសំឡេង PTT",
-            style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500),
-          ),
+          if (_shouldShowTime(index)) ...[
+            const SizedBox(height: 4),
+            Text(
+              _formatMessageTime(msg.createdAt),
+              style: TextStyle(
+                color: msg.isMe ? Colors.white70 : Colors.white54,
+                fontSize: 9,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -946,7 +1026,7 @@ class ConsoleTabState extends State<ConsoleTab> {
               ),
 
               // Main Chat Area
-              Expanded(
+                  Expanded(
                 child: hasChannel
                     ? ListView.builder(
                         controller: _chatScrollController,
@@ -955,25 +1035,28 @@ class ConsoleTabState extends State<ConsoleTab> {
                         itemCount: _chatMessages.length,
                         itemBuilder: (context, i) {
                           final msg = _chatMessages[i];
+                          final showHeader = !msg.isMe && _shouldShowTime(i);
+                          
                           return Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             alignment: msg.isMe ? Alignment.centerRight : Alignment.centerLeft,
                             child: Column(
                               crossAxisAlignment: msg.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (!msg.isMe) ...[
+                                if (showHeader) ...[
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildSenderAvatar(msg.sender),
+                                      const SizedBox(width: 6),
                                       Text(
                                         msg.sender,
                                         style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.bold),
                                       ),
-                                      const SizedBox(width: 6),
                                     ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
+                                  ),
+                                  const SizedBox(height: 4),
+                                ],
                                 if (msg.type == 'chat')
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -987,15 +1070,31 @@ class ConsoleTabState extends State<ConsoleTab> {
                                       ),
                                       border: Border.all(color: const Color(0xFF334155)),
                                     ),
-                                    child: Text(
-                                      msg.text ?? '',
-                                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          msg.text ?? '',
+                                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        ),
+                                        if (_shouldShowTime(i)) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _formatMessageTime(msg.createdAt),
+                                            style: TextStyle(
+                                              color: msg.isMe ? Colors.white70 : Colors.white54,
+                                              fontSize: 9,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   )
                                 else if (msg.type == 'file')
-                                  _buildFileShareWidget(msg)
+                                  _buildFileShareWidget(msg, i)
                                 else if (msg.type == 'voice')
-                                  _buildVoiceMessageWidget(msg),
+                                  _buildVoiceMessageWidget(msg, i),
                               ],
                             ),
                           );
