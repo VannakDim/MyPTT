@@ -25,7 +25,18 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> json, String currentUsername) {
     int? idVal = json['id'];
-    String senderVal = json['sender'] ?? json['sender_name'] ?? 'System';
+    
+    String senderVal = 'System';
+    if (json['sender'] != null) {
+      if (json['sender'] is Map) {
+        senderVal = json['sender']['name'] ?? 'System';
+      } else {
+        senderVal = json['sender'].toString();
+      }
+    } else if (json['sender_name'] != null) {
+      senderVal = json['sender_name'].toString();
+    }
+
     DateTime? timeVal;
     if (json['created_at'] != null) {
       timeVal = DateTime.tryParse(json['created_at'].toString());
