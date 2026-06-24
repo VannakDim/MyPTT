@@ -33,6 +33,7 @@ services:
       - DB_DATABASE=real_db
       - DB_USERNAME=root
       - DB_PASSWORD=
+      - VOICE_SERVER_SECRET=myptt_super_secret_key
     networks:
       - myptt-network
 
@@ -51,6 +52,7 @@ services:
       - backend
     environment:
       - LARAVEL_AUTH_URL=http://backend:8000/api/user
+      - VOICE_SERVER_SECRET=myptt_super_secret_key
     networks:
       - myptt-network
 

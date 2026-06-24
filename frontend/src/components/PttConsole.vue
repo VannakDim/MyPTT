@@ -92,14 +92,19 @@
     <div class="panel-right">
       <h4>Group Chat & File Sharing</h4>
       <div class="chat-area" ref="chatRef">
-        <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', msg.sender === username ? 'msg-me' : '']">
-          <span class="msg-user">{{ msg.sender }}</span>
+        <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', (msg.sender || msg.sender_name) === username ? 'msg-me' : '']">
+          <span class="msg-user">{{ msg.sender || msg.sender_name }}</span>
           <p v-if="msg.type === 'chat'" class="msg-text">{{ msg.text }}</p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
-            <img v-if="msg.file_type.startsWith('image/')" :src="msg.file_data" class="preview-img" />
-            <a v-else :href="msg.file_data" :download="msg.file_name" class="download-link">
+            <img v-if="msg.file_type && msg.file_type.startsWith('image/')" :src="getFileUrl(msg)" class="preview-img" />
+            <a v-else :href="getFileUrl(msg)" :download="msg.file_name" target="_blank" class="download-link">
               📁 ឯកសារ៖ {{ msg.file_name }} (ទាញយក)
             </a>
+          </div>
+          <div v-else-if="msg.type === 'voice'" class="msg-voice">
+            <button @click="playVoice(getFileUrl(msg))" class="voice-btn">
+              {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់សំឡេង...' : '🔊 សារសំឡេង PTT' }}
+            </button>
           </div>
         </div>
       </div>
@@ -178,6 +183,38 @@ const typedText = ref("");
 const chatRef = ref(null);
 const logsRef = ref(null);
 
+const activeAudio = ref(null);
+const playingUrl = ref(null);
+
+const getFileUrl = (msg) => {
+  if (msg.file_data) return msg.file_data;
+  if (msg.file_path) {
+    const apiBase = import.meta.env.VITE_LARAVEL_API_URL || 'https://api-ptt.stpmtelecom.com';
+    return `${apiBase}${msg.file_path}`;
+  }
+  return '';
+};
+
+const playVoice = (url) => {
+  if (activeAudio.value) {
+    activeAudio.value.pause();
+    if (playingUrl.value === url) {
+      playingUrl.value = null;
+      activeAudio.value = null;
+      return;
+    }
+  }
+
+  playingUrl.value = url;
+  const audio = new Audio(url);
+  activeAudio.value = audio;
+  audio.play();
+  audio.onended = () => {
+    playingUrl.value = null;
+    activeAudio.value = null;
+  };
+};
+
 const scrollToBottomLogs = () => {
   nextTick(() => {
     if (logsRef.value) {
@@ -232,6 +269,7 @@ const fetchUserGroups = async () => {
         selectedGroupId.value = data[0].id;
         currentChannelName.value = data[0].name;
         await fetchGroupMembers(data[0].id);
+        await fetchGroupMessages(data[0].id);
         return; // ចាកចេញដោយជោគជ័យ
       } else {
         console.warn("⚠️ Laravel បោះអារេទទេមកវិញ [] (គណនីនេះមិនទាន់មានក្រុមក្នុង Database)");
@@ -282,6 +320,28 @@ const fetchGroupMembers = async (groupId) => {
   }
 };
 
+const fetchGroupMessages = async (groupId) => {
+  try {
+    const cleanToken = props.userToken ? props.userToken.trim() : '';
+    const response = await fetch(`${import.meta.env.VITE_LARAVEL_API_URL}/api/groups/${groupId}/messages`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${cleanToken}`,
+        'Accept': 'application/json'
+      }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`✅ Message history for group ID ${groupId}:`, data);
+      chatMessages.value = data;
+      await nextTick();
+      if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
+    }
+  } catch (error) {
+    console.error("Error fetching group messages:", error);
+  }
+};
+
 // ========================================================
 // 🟢 មុខងារប្តូរក្រុមវិទ្យុទាក់ទង (Switch Room)
 // ========================================================
@@ -297,6 +357,7 @@ const handleGroupChange = async () => {
   onlineUsersCount.value = 0;
 
   await fetchGroupMembers(targetGroup.id);
+  await fetchGroupMessages(targetGroup.id);
 
   cleanupAllPeers();
   if (ws) ws.close();
@@ -738,6 +799,9 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .msg-me .msg-text { background: #3498db; color: white; }
 .preview-img { max-width: 140px; max-height: 140px; border-radius: 6px; margin-top: 4px; }
 .download-link { background: #f1f2f6; color: #2f3542; padding: 6px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; border: 1px solid #ddd; margin-top: 4px; }
+.msg-voice { margin-top: 4px; }
+.voice-btn { background: #e67e22; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
+.msg-me .voice-btn { background: #d35400; }
 .chat-input { display: flex; gap: 5px; align-items: center; }
 .chat-input input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
 .file-btn { font-size: 20px; cursor: pointer; padding: 0 5px; }

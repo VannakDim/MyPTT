@@ -23,12 +23,18 @@ class ChannelManager:
 
     async def connect(self, channel: str, websocket: WebSocket, username: str):
         if channel not in self.channels:
-            self.channels[channel] = {"users": {}, "speaker": None}
+            self.channels[channel] = {
+                "users": {},
+                "speaker": None,
+                "speaker_username": None,
+                "audio_buffer": bytearray()
+            }
         self.channels[channel]["users"][websocket] = username
         await self.update_user_count(channel)
 
-    async def disconnect(self, channel: str, websocket: WebSocket):
+    async def disconnect(self, channel: str, websocket: WebSocket) -> dict:
         """ 🟢 មុខងារកែសម្រួលថ្មី៖ ដោះស្រាយបញ្ហា Logout ហើយចំនួនសមាជិកមិនព្រមថយចុះ """
+        res = None
         if channel in self.channels:
             # ១. លុប WebSocket client ដែលដាច់ការភ្ជាប់ចេញពីបន្ទប់
             if websocket in self.channels[channel]["users"]:
@@ -36,7 +42,13 @@ class ChannelManager:
 
             # ២. បើគាត់ជាអ្នកកំពុងនិយាយ PTT ត្រូវលែងសោរ PTT វិញ
             if self.channels[channel]["speaker"] == websocket:
+                audio_bytes = bytes(self.channels[channel].get("audio_buffer", b""))
+                speaker = self.channels[channel].get("speaker_username", "User")
+                res = {"audio_bytes": audio_bytes, "speaker": speaker}
+
                 self.channels[channel]["speaker"] = None
+                self.channels[channel]["speaker_username"] = None
+                self.channels[channel]["audio_buffer"] = bytearray()
 
             # ៣. បើគ្មានមនុស្សសល់ក្នុងបន្ទប់ទាល់តែសោះ លុបបន្ទប់នោះចោល
             if len(self.channels[channel]["users"]) == 0:
@@ -44,18 +56,27 @@ class ChannelManager:
             else:
                 # ផ្ញើចំនួន និងបញ្ជីឈ្មោះថ្មីទៅកាន់អ្នកដែលនៅសល់ភ្លាមៗ
                 await self.update_user_count(channel)
+        return res
 
-    async def request_ptt(self, channel: str, websocket: WebSocket) -> bool:
+    async def request_ptt(self, channel: str, websocket: WebSocket, username: str) -> bool:
         if channel in self.channels and self.channels[channel]["speaker"] is None:
             self.channels[channel]["speaker"] = websocket
+            self.channels[channel]["speaker_username"] = username
+            self.channels[channel]["audio_buffer"] = bytearray()
             return True
         return False
 
-    async def release_ptt(self, channel: str, websocket: WebSocket) -> bool:
+    async def release_ptt(self, channel: str, websocket: WebSocket) -> dict:
         if channel in self.channels and self.channels[channel]["speaker"] == websocket:
             self.channels[channel]["speaker"] = None
-            return True
-        return False
+            audio_bytes = bytes(self.channels[channel].get("audio_buffer", b""))
+            speaker = self.channels[channel].get("speaker_username", "User")
+            
+            # Reset
+            self.channels[channel]["speaker_username"] = None
+            self.channels[channel]["audio_buffer"] = bytearray()
+            return {"audio_bytes": audio_bytes, "speaker": speaker}
+        return None
 
     async def broadcast_audio(self, channel: str, sender_ws: WebSocket, audio_bytes: bytes):
         if channel in self.channels:
@@ -63,6 +84,10 @@ class ChannelManager:
             is_line_free = self.channels[channel]["speaker"] is None
             
             if is_ptt_speaker or is_line_free:
+                # Accumulate audio bytes if we have a buffer
+                if is_ptt_speaker and "audio_buffer" in self.channels[channel]:
+                    self.channels[channel]["audio_buffer"].extend(audio_bytes)
+
                 for user_ws in self.channels[channel]["users"].keys():
                     if user_ws != sender_ws:
                         try:

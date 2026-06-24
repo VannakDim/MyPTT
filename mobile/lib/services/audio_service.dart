@@ -20,6 +20,7 @@ class AudioService {
     }
   }
   FlutterSoundRecorder? _recorder;
+  FlutterSoundPlayer? _urlPlayer;
   bool _isRecorderInitialized = false;
   bool _isPlayerInitialized = false;
 
@@ -253,14 +254,48 @@ class AudioService {
     }
   }
 
+  // ៧b. ចាក់សំឡេងពី URL (សម្រាប់សារសំឡេង PTT ដែលបានរក្សាទុក)
+  Future<void> playUrl(String url, {required Function() onFinished}) async {
+    if (_urlPlayer == null) {
+      _urlPlayer = FlutterSoundPlayer();
+      await _urlPlayer!.openPlayer();
+    }
+
+    if (_urlPlayer!.isPlaying) {
+      await _urlPlayer!.stopPlayer();
+    }
+
+    try {
+      await _urlPlayer!.startPlayer(
+        fromURI: url,
+        codec: Codec.pcm16WAV,
+        whenFinished: onFinished,
+      );
+    } catch (e) {
+      print("[AudioService] Error playing URL $url: $e");
+      onFinished();
+    }
+  }
+
+  Future<void> stopUrlPlayer() async {
+    if (_urlPlayer != null && _urlPlayer!.isPlaying) {
+      await _urlPlayer!.stopPlayer();
+    }
+  }
+
   // ៨. សម្អាតធនធាន (Dispose)
   Future<void> dispose() async {
     await stopRecording();
     await stopPlaybackStream();
+    await stopUrlPlayer();
 
     if (_recorder != null) {
       await _recorder!.closeRecorder();
       _recorder = null;
+    }
+    if (_urlPlayer != null) {
+      await _urlPlayer!.closePlayer();
+      _urlPlayer = null;
     }
     try {
       await FlutterPcmSound.release();

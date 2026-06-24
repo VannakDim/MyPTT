@@ -66,6 +66,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   // Logs and Chat State
   final List<String> _logs = [];
   final List<ChatMessage> _chatMessages = [];
+  String? _playingVoiceUrl;
   final _chatController = TextEditingController();
   
   final _chatScrollController = ScrollController();
@@ -104,6 +105,7 @@ class ConsoleTabState extends State<ConsoleTab> {
       if (widget.selectedGroup != null) {
         _connectWebSocket(widget.selectedGroup!.name);
         _fetchGroupMembers(widget.selectedGroup!.id);
+        _fetchGroupMessages(widget.selectedGroup!.id);
       } else {
         setState(() {
           _systemStatus = "No Channels";
@@ -136,6 +138,7 @@ class ConsoleTabState extends State<ConsoleTab> {
       if (widget.selectedGroup != null) {
         _connectWebSocket(widget.selectedGroup!.name);
         _fetchGroupMembers(widget.selectedGroup!.id);
+        _fetchGroupMessages(widget.selectedGroup!.id);
       } else {
         _wsService.disconnect();
         setState(() {
@@ -179,6 +182,21 @@ class ConsoleTabState extends State<ConsoleTab> {
       }
     } catch (e) {
       debugPrint("Failed loading group members: $e");
+    }
+  }
+
+  Future<void> _fetchGroupMessages(int groupId) async {
+    try {
+      final messages = await ApiService.getGroupMessages(groupId);
+      if (mounted) {
+        setState(() {
+          _chatMessages.clear();
+          _chatMessages.addAll(messages);
+        });
+        _scrollToBottomChat();
+      }
+    } catch (e) {
+      debugPrint("Failed loading group messages: $e");
     }
   }
 
@@ -607,18 +625,38 @@ class ConsoleTabState extends State<ConsoleTab> {
   }
 
   Widget _buildFileShareWidget(ChatMessage msg) {
-    if (msg.fileType?.startsWith('image/') ?? false) {
-      try {
-        final base64Val = msg.fileData!.split(',').last;
-        final bytes = base64Decode(base64Val);
+    final isImage = msg.fileType?.startsWith('image/') ?? false;
+
+    if (isImage) {
+      if (msg.fileData != null) {
+        try {
+          final base64Val = msg.fileData!.split(',').last;
+          final bytes = base64Decode(base64Val);
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(bytes, height: 120, fit: BoxFit.cover),
+          );
+        } catch (e) {
+          return const Text("⚠️ [កំហុសរូបភាព]", style: TextStyle(color: Colors.redAccent));
+        }
+      } else if (msg.filePath != null) {
+        final url = msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}';
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.memory(bytes, height: 120, fit: BoxFit.cover),
+          child: Image.network(
+            url,
+            height: 120,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => const Text("⚠️ [កំហុសទាញយករូបភាព]", style: TextStyle(color: Colors.redAccent)),
+          ),
         );
-      } catch (e) {
-        return const Text("⚠️ [កំហុសរូបភាព]", style: TextStyle(color: Colors.redAccent));
       }
     }
+
+    final fileUrl = msg.filePath != null
+        ? (msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}')
+        : null;
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -634,6 +672,63 @@ class ConsoleTabState extends State<ConsoleTab> {
           Text(
             msg.fileName ?? 'File',
             style: const TextStyle(color: Colors.white, fontSize: 11, decoration: TextDecoration.underline),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceMessageWidget(ChatMessage msg) {
+    final fileUrl = msg.filePath != null
+        ? (msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}')
+        : null;
+
+    final isPlaying = _playingVoiceUrl == fileUrl && fileUrl != null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: msg.isMe ? const Color(0xFF0EA5E9).withOpacity(0.9) : const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(isPlaying ? Icons.stop_circle_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              if (fileUrl != null) {
+                if (isPlaying) {
+                  _audioService.stopUrlPlayer();
+                  setState(() {
+                    _playingVoiceUrl = null;
+                  });
+                } else {
+                  setState(() {
+                    _playingVoiceUrl = fileUrl;
+                  });
+                  _audioService.playUrl(fileUrl, onFinished: () {
+                    if (mounted) {
+                      setState(() {
+                        if (_playingVoiceUrl == fileUrl) {
+                          _playingVoiceUrl = null;
+                        }
+                      });
+                    }
+                  });
+                }
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.volume_up_rounded, color: Colors.white70, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            "សារសំឡេង PTT",
+            style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -852,7 +947,9 @@ class ConsoleTabState extends State<ConsoleTab> {
                                     ),
                                   )
                                 else if (msg.type == 'file')
-                                  _buildFileShareWidget(msg),
+                                  _buildFileShareWidget(msg)
+                                else if (msg.type == 'voice')
+                                  _buildVoiceMessageWidget(msg),
                               ],
                             ),
                           );

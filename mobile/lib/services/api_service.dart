@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.model.dart';
+import '../models/chat_message.model.dart';
 
 class ApiService {
   // 🟢 កំណត់ IP របស់ Laravel backend (កែសម្រួលតាម IP ម៉ាស៊ីនរបស់អ្នក)
@@ -199,5 +200,36 @@ class ApiService {
       return {'success': true, 'message': data['message']};
     }
     return {'success': false, 'message': data['message'] ?? 'លុបអ្នកប្រើប្រាស់បរាជ័យ'};
+  }
+
+  // ៩. ទាញយកប្រវត្តិសារក្នុងក្រុម (Get Group Messages history)
+  static Future<List<ChatMessage>> getGroupMessages(int groupId) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/groups/$groupId/messages'),
+        headers: headers,
+      );
+
+      debugPrint('[API] getGroupMessages($groupId) status=${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) {
+          final prefs = await SharedPreferences.getInstance();
+          final currentUsername = prefs.getString('ptt_username') ?? 'admin';
+          return decoded.map((m) => ChatMessage.fromJson(m, currentUsername)).toList();
+        } else {
+          debugPrint('[API] getGroupMessages unexpected format: ${response.body}');
+          return [];
+        }
+      } else {
+        debugPrint('[API] getGroupMessages error: ${response.statusCode} ${response.body}');
+        return [];
+      }
+    } catch (e, st) {
+      debugPrint('[API] getGroupMessages exception: $e\n$st');
+      return [];
+    }
   }
 }
