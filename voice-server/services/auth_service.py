@@ -15,8 +15,10 @@ def verify_jwt_token(token: str):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
         
     try:
-        # វិធីទី១៖ ហៅទៅកាន់ Laravel API ដើម្បី Check ថា Token ត្រឹមត្រូវ និងមិនទាន់ Expired
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
         response = requests.get(LARAVEL_AUTH_URL, headers=headers, timeout=5)
         
         if response.status_code == 200:
