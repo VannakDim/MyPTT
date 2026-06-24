@@ -16,10 +16,6 @@
 	<string>CamboCom</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>CamboCom requires microphone access to capture your voice for Push-To-Talk and private audio calls.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>CamboCom requires camera access for video calls (optional).</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
@@ -28,6 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>CamboCom requires camera access for video calls (optional).</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CamboCom requires microphone access to capture your voice for Push-To-Talk and private audio calls.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
