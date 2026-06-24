@@ -93,7 +93,7 @@
       <h4>Group Chat & File Sharing</h4>
       <div class="chat-area" ref="chatRef" @scroll="handleScroll">
         <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', getMessageSenderName(msg) === username ? 'msg-me' : '']">
-          <div v-if="getMessageSenderName(msg) !== username" class="msg-sender-info">
+          <div v-if="getMessageSenderName(msg) !== username && shouldShowTime(msg, i)" class="msg-sender-info">
             <div class="msg-avatar" :style="getAvatarStyle(getMessageSenderAvatar(msg), getMessageSenderName(msg))">
               <img v-if="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).type === 'image'" :src="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).value" class="avatar-img" />
               <span v-else-if="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).type === 'emoji'">{{ parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).value }}</span>
