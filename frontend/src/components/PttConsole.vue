@@ -92,8 +92,15 @@
     <div class="panel-right">
       <h4>Group Chat & File Sharing</h4>
       <div class="chat-area" ref="chatRef" @scroll="handleScroll">
-        <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', (msg.sender || msg.sender_name) === username ? 'msg-me' : '']">
-          <span class="msg-user">{{ msg.sender || msg.sender_name }}</span>
+        <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg-line', getMessageSenderName(msg) === username ? 'msg-me' : '']">
+          <div v-if="getMessageSenderName(msg) !== username" class="msg-sender-info">
+            <div class="msg-avatar" :style="getAvatarStyle(getMessageSenderAvatar(msg), getMessageSenderName(msg))">
+              <img v-if="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).type === 'image'" :src="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).value" class="avatar-img" />
+              <span v-else-if="parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).type === 'emoji'">{{ parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).value }}</span>
+              <span v-else>{{ parseAvatar(getMessageSenderAvatar(msg), getMessageSenderName(msg)).value }}</span>
+            </div>
+            <span class="msg-user-name">{{ getMessageSenderName(msg) }}</span>
+          </div>
           <p v-if="msg.type === 'chat'" class="msg-text">{{ msg.text }}</p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
             <img v-if="msg.file_type && msg.file_type.startsWith('image/')" :src="getFileUrl(msg)" class="preview-img" />
@@ -185,6 +192,22 @@ const logsRef = ref(null);
 
 const activeAudio = ref(null);
 const playingUrl = ref(null);
+
+const getMessageSenderName = (msg) => {
+  if (msg.sender && typeof msg.sender === 'object') {
+    return msg.sender.name;
+  }
+  return msg.sender || msg.sender_name || 'User';
+};
+
+const getMessageSenderAvatar = (msg) => {
+  const name = getMessageSenderName(msg);
+  if (msg.sender && typeof msg.sender === 'object' && msg.sender.avatar) {
+    return msg.sender.avatar;
+  }
+  const user = allRegisteredUsers.value.find(u => String(u.name).toLowerCase() === String(name).toLowerCase());
+  return user ? user.avatar : null;
+};
 
 const getFileUrl = (msg) => {
   if (msg.file_data) return msg.file_data;
@@ -842,17 +865,119 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 .logs-container { width: 100%; text-align: left; background: #fff; max-height: 80px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 6px; box-sizing: border-box; margin-top: 5px; }
 .logs-container ul { list-style: none; padding: 0; margin: 0; }
 .logs-container li { padding: 2px 4px; margin-bottom: 2px; background: #f9f9f9; border-left: 3px solid #7f8c8d; color: #111; font-size: 11px; }
-.chat-area { flex-grow: 1; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
-.msg-line { display: flex; flex-direction: column; align-items: flex-start; max-width: 80%; }
-.msg-me { align-self: flex-end; align-items: flex-end; }
-.msg-user { font-size: 10px; color: #888; }
-.msg-text { background: #eee; padding: 6px 10px; border-radius: 10px; font-size: 13px; margin: 0; color: #111; }
-.msg-me .msg-text { background: #3498db; color: white; }
+.chat-area {
+  flex-grow: 1;
+  background: #eef2f5;
+  background-image: radial-gradient(#d5dde3 1px, transparent 0);
+  background-size: 16px 16px;
+  border: 1px solid #ced4da;
+  border-radius: 10px;
+  padding: 15px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.msg-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 75%;
+  margin-bottom: 2px;
+}
+.msg-me {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.msg-sender-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.msg-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: bold;
+  color: white;
+  user-select: none;
+}
+.msg-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.msg-user-name {
+  font-size: 11px;
+  font-weight: bold;
+  color: #555;
+}
+.msg-text {
+  background: #ffffff;
+  padding: 8px 14px;
+  border-radius: 12px 12px 12px 4px;
+  font-size: 13.5px;
+  margin: 0;
+  color: #212529;
+  box-shadow: 0 1.5px 2px rgba(0,0,0,0.06);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.msg-me .msg-text {
+  background: #d9fdd3;
+  color: #111;
+  border-radius: 12px 12px 4px 12px;
+  box-shadow: 0 1.5px 2px rgba(0,0,0,0.08);
+}
 .preview-img { max-width: 140px; max-height: 140px; border-radius: 6px; margin-top: 4px; }
 .download-link { background: #f1f2f6; color: #2f3542; padding: 6px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; border: 1px solid #ddd; margin-top: 4px; }
-.msg-voice { margin-top: 4px; }
-.voice-btn { background: #e67e22; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
-.msg-me .voice-btn { background: #d35400; }
+.msg-file {
+  background: #ffffff;
+  padding: 8px 8px;
+  border-radius: 12px 12px 12px 4px;
+  box-shadow: 0 1.5px 2px rgba(0,0,0,0.06);
+}
+.msg-me .msg-file {
+  background: #d9fdd3;
+  border-radius: 12px 12px 4px 12px;
+}
+.msg-voice {
+  background: #ffffff;
+  padding: 8px 8px;
+  border-radius: 12px 12px 12px 4px;
+  box-shadow: 0 1.5px 2px rgba(0,0,0,0.06);
+}
+.msg-me .msg-voice {
+  background: #d9fdd3;
+  border-radius: 12px 12px 4px 12px;
+}
+.voice-btn {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.voice-btn:hover {
+  background: #2980b9;
+}
+.msg-me .voice-btn {
+  background: #2ecc71;
+}
+.msg-me .voice-btn:hover {
+  background: #27ae60;
+}
 .chat-input { display: flex; gap: 5px; align-items: center; }
 .chat-input input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
 .file-btn { font-size: 20px; cursor: pointer; padding: 0 5px; }
