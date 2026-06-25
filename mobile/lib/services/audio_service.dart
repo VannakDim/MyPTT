@@ -1,21 +1,19 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+
 
 class AudioService {
   static const _channel = MethodChannel('com.example.mobile/audio');
 
-  Future<void> _setAndroidSpeakerphone(bool enable) async {
-    if (!Platform.isAndroid) return;
+  Future<void> _setSpeakerphone(bool enable) async {
     try {
       await _channel.invokeMethod('setSpeakerphoneOn', {'enable': enable});
-      print("[AudioService] Set android speakerphone to: $enable");
+      print("[AudioService] Set speakerphone to: $enable");
     } catch (e) {
       print("[AudioService] Failed to set speakerphone: $e");
     }
@@ -53,7 +51,7 @@ class AudioService {
         avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
         avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker |
                                        AVAudioSessionCategoryOptions.allowBluetooth,
-        avAudioSessionMode: AVAudioSessionMode.videoChat,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
         androidAudioAttributes: const AndroidAudioAttributes(
           contentType: AndroidAudioContentType.speech,
           usage: AndroidAudioUsage.voiceCommunication,
@@ -77,7 +75,7 @@ class AudioService {
       await FlutterPcmSound.setFeedThreshold(800); // Trigger callback when remaining samples < 800
       FlutterPcmSound.setFeedCallback(_onFeed);
       _isPlayerInitialized = true;
-      await _setAndroidSpeakerphone(true);
+      await _setSpeakerphone(true);
     } catch (e) {
       print("[AudioService] Failed to initialize PcmSound player: $e");
     }
@@ -145,7 +143,7 @@ class AudioService {
 
     // Force speakerphone ON immediately after starting recording
     try {
-      await _setAndroidSpeakerphone(true);
+      await _setSpeakerphone(true);
     } catch (e) {
       print("[AudioService] Failed to set speakerphone on record: $e");
     }
@@ -190,7 +188,7 @@ class AudioService {
     _isPlaying = true;
     try {
       await FlutterPcmSound.play();
-      await _setAndroidSpeakerphone(true);
+      await _setSpeakerphone(true);
     } catch (e) {
       print("[AudioService] Error starting playback stream: $e");
     }
@@ -219,7 +217,7 @@ class AudioService {
       if (_isBuffering && _audioQueue.length >= 1600) {
         _isBuffering = false;
         // Make sure speakerphone is still forced on during state changes
-        _setAndroidSpeakerphone(true).catchError((_) {});
+        _setSpeakerphone(true).catchError((_) {});
       }
 
       // Start the player once if it's not already playing
@@ -276,6 +274,7 @@ class AudioService {
     }
 
     try {
+      await _setSpeakerphone(true);
       await _urlPlayer!.startPlayer(
         fromURI: url,
         whenFinished: () async {
@@ -287,6 +286,8 @@ class AudioService {
           }
         },
       );
+      // Extra safety: re-apply speakerphone after starting player to ensure it takes effect
+      await _setSpeakerphone(true);
     } catch (e) {
       print("[AudioService] Error playing URL $url: $e");
       onFinished();
@@ -327,7 +328,7 @@ class AudioService {
     } catch (e) {
       print("[AudioService] Error releasing PcmSound: $e");
     }
-    await _setAndroidSpeakerphone(false);
+    await _setSpeakerphone(false);
     _isRecorderInitialized = false;
     _isPlayerInitialized = false;
   }
