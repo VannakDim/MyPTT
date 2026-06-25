@@ -1468,7 +1468,10 @@ class _SwipeToRevealState extends State<SwipeToReveal> with SingleTickerProvider
     _controller.value = currentRatio;
 
     if (_dragOffset < -_maxRevealWidth / 2) {
-      _controller.animateTo(1.0, curve: Curves.easeOut);
+      // Animate back to closed and show the delete confirmation dialog directly
+      _controller.animateTo(0.0, curve: Curves.easeOut).then((_) {
+        widget.onDelete();
+      });
     } else {
       _controller.animateTo(0.0, curve: Curves.easeOut);
     }
