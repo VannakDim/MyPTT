@@ -322,12 +322,14 @@ class ConsoleTabState extends State<ConsoleTab> {
             if (status == 'talking_granted') {
               _pttState = "talking";
               _webrtcService?.setMute(false);
+              _startMicStreaming();
             } else if (status == 'line_busy') {
               _pttState = "busy";
               _webrtcService?.setMute(true);
             } else {
               _pttState = "idle";
               _webrtcService?.setMute(true);
+              _audioService.stopRecording();
             }
           });
           _broadcastPttStatus(status == 'talking_granted' ? 'talking' : (status == 'line_busy' ? 'busy' : 'idle'));

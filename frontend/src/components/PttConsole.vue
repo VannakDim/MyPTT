@@ -573,6 +573,7 @@ const connectWS = () => {
             pttState.value = 'talking'; 
             pttButtonText.value = '🎙️ អ្នកកំពុងនិយាយ...'; 
             if (localTrack) localTrack.enabled = true;
+            startRecording();
           } else if (data.status === 'line_busy') {
             pttState.value = 'busy'; 
             pttButtonText.value = '❌ ខ្សែរវល់';
@@ -581,6 +582,7 @@ const connectWS = () => {
             pttState.value = 'idle'; 
             pttButtonText.value = 'ចុចជាប់ដើម្បីនិយាយ (PTT)';
             if (localTrack) localTrack.enabled = false;
+            stopRecording();
           }
         } else if (data && data.type === 'system') {
           logs.value.push(data.message);
