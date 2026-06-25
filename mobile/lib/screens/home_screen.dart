@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/api_service.dart';
+import '../services/image_service.dart';
 import '../models/user.model.dart';
 import 'login_screen.dart';
 import 'console_tab.dart';
@@ -26,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Group> _myGroups = [];
   Group? _selectedGroup;
   bool _showLogs = false;
+  bool _showPttButton = true;
   String _currentView = 'chat'; // 'chat' or 'users'
   final GlobalKey<ConsoleTabState> _consoleKey = GlobalKey<ConsoleTabState>();
 
@@ -57,10 +59,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _email = prefs.getString('ptt_email') ?? '';
       _role = prefs.getString('ptt_role') ?? 'user';
       _avatarStr = prefs.getString('ptt_avatar') ?? '';
+      _showPttButton = prefs.getBool('ptt_show_button') ?? true;
     });
     if (_token != null) {
       _fetchGroups();
     }
+  }
+
+  Future<void> _savePttButtonConfig(bool val) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ptt_show_button', val);
+    setState(() {
+      _showPttButton = val;
+    });
   }
 
   Future<void> _fetchGroups() async {
@@ -385,6 +396,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
             ),
 
+            SwitchListTile(
+              secondary: const Icon(Icons.radio_button_checked_rounded, color: Color(0xFFE2E8F0), size: 20),
+              title: const Text("បង្ហាញប៊ូតុង PTT", style: TextStyle(color: Colors.white, fontSize: 13)),
+              value: _showPttButton,
+              activeColor: const Color(0xFF38BDF8),
+              onChanged: (val) {
+                _savePttButtonConfig(val);
+              },
+            ),
+
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 20),
               title: const Text("🚪 ចាកចេញពីគណនី", style: TextStyle(color: Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
@@ -411,6 +432,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       selectedGroup: _selectedGroup,
       myGroups: _myGroups,
       showLogs: _showLogs,
+      showPttButton: _showPttButton,
     );
   }
 }
@@ -446,6 +468,7 @@ class _EditProfileDialogState extends State<EditProfileDialog> with SingleTicker
 
   late TabController _tabController;
   bool _isSaving = false;
+  bool _isCompressing = false;
   String? _errorMsg;
 
   // Avatar Config Panel State
@@ -490,14 +513,30 @@ class _EditProfileDialogState extends State<EditProfileDialog> with SingleTicker
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result == null || result.files.isEmpty) return;
 
-    final file = File(result.files.first.path!);
-    final bytes = await file.readAsBytes();
-    final extension = result.files.first.extension ?? 'png';
-    final base64Str = 'data:image/$extension;base64,${base64Encode(bytes)}';
-
     setState(() {
-      _selectedImageBase64 = base64Str;
+      _isCompressing = true;
+      _errorMsg = null;
     });
+
+    try {
+      final file = File(result.files.first.path!);
+      final bytes = await file.readAsBytes();
+      
+      // Compress image to JPEG format base64
+      final base64Str = await ImageService.compressToBase64(bytes, maxDimension: 800, quality: 75);
+      
+      setState(() {
+        _selectedImageBase64 = base64Str;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMsg = "មិនអាចបង្ហោះរូបភាព៖ $e";
+      });
+    } finally {
+      setState(() {
+        _isCompressing = false;
+      });
+    }
   }
 
   Future<void> _saveProfile() async {
@@ -692,7 +731,11 @@ class _EditProfileDialogState extends State<EditProfileDialog> with SingleTicker
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (_selectedImageBase64 != null) ...[
+                          if (_isCompressing) ...[
+                            const CircularProgressIndicator(color: Color(0xFF38BDF8)),
+                            const SizedBox(height: 10),
+                            const Text("កំពុងបង្ហាប់រូបភាព...", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                          ] else if (_selectedImageBase64 != null) ...[
                             CircleAvatar(
                               radius: 35,
                               backgroundImage: MemoryImage(

@@ -12,6 +12,8 @@ import '../services/audio_service.dart';
 import '../services/notification_service.dart';
 import '../services/ringtone_service.dart';
 import '../services/webrtc_service.dart';
+import '../services/image_service.dart';
+import '../widgets/image_viewer.dart';
 import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
 
@@ -20,6 +22,7 @@ class ConsoleTab extends StatefulWidget {
   final Group? selectedGroup;
   final List<Group> myGroups;
   final bool showLogs;
+  final bool showPttButton;
 
   const ConsoleTab({
     super.key,
@@ -27,6 +30,7 @@ class ConsoleTab extends StatefulWidget {
     this.selectedGroup,
     required this.myGroups,
     required this.showLogs,
+    this.showPttButton = true,
   });
 
   @override
@@ -477,13 +481,27 @@ class ConsoleTabState extends State<ConsoleTab> {
 
     final filePath = result.files.first.path!;
     final file = File(filePath);
-    final bytes = await file.readAsBytes();
-    final name = result.files.first.name;
-    final extension = result.files.first.extension ?? 'bin';
+    Uint8List bytes = await file.readAsBytes();
+    String name = result.files.first.name;
+    String extension = (result.files.first.extension ?? 'bin').toLowerCase();
     String fileType = 'application/octet-stream';
 
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension.toLowerCase())) {
-      fileType = 'image/$extension';
+    final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
+    if (isImage) {
+      // Compress the image to JPEG
+      final compressedBytes = await ImageService.compressImage(bytes, maxDimension: 1024, quality: 80);
+      if (compressedBytes != null) {
+        bytes = compressedBytes;
+        fileType = 'image/jpeg';
+        final dotIndex = name.lastIndexOf('.');
+        if (dotIndex != -1) {
+          name = '${name.substring(0, dotIndex)}.jpg';
+        } else {
+          name = '$name.jpg';
+        }
+      } else {
+        fileType = 'image/$extension';
+      }
     }
 
     final base64Val = 'data:$fileType;base64,${base64Encode(bytes)}';
@@ -732,22 +750,48 @@ class ConsoleTabState extends State<ConsoleTab> {
         try {
           final base64Val = msg.fileData!.split(',').last;
           final bytes = base64Decode(base64Val);
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.memory(bytes, height: 120, fit: BoxFit.cover),
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FullScreenImageViewer(base64Data: msg.fileData),
+                ),
+              );
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(bytes, height: 120, fit: BoxFit.cover),
+              ),
+            ),
           );
         } catch (e) {
           return const Text("⚠️ [កំហុសរូបភាព]", style: TextStyle(color: Colors.redAccent));
         }
       } else if (msg.filePath != null) {
         final url = msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}';
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            url,
-            height: 120,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => const Text("⚠️ [កំហុសទាញយករូបភាព]", style: TextStyle(color: Colors.redAccent)),
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FullScreenImageViewer(imageUrl: url),
+              ),
+            );
+          },
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                url,
+                height: 120,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Text("⚠️ [កំហុសទាញយករូបភាព]", style: TextStyle(color: Colors.redAccent)),
+              ),
+            ),
           ),
         );
       }
@@ -1181,7 +1225,7 @@ class ConsoleTabState extends State<ConsoleTab> {
         ),
         
         // Draggable Floating PTT Button Card
-        if (hasChannel)
+        if (hasChannel && widget.showPttButton)
           ValueListenableBuilder<Offset>(
             valueListenable: _pttPositionNotifier,
             builder: (context, position, child) {

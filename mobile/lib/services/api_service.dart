@@ -7,7 +7,8 @@ import '../models/chat_message.model.dart';
 
 class ApiService {
   // 🟢 កំណត់ IP របស់ Laravel backend (កែសម្រួលតាម IP ម៉ាស៊ីនរបស់អ្នក)
-  static const String baseUrl = "https://api-ptt.stpmtelecom.com";
+  static const String baseUrl = "https://api-ptt.stpmtelecom.com"; // Production
+  // static const String baseUrl = "http://localhost:8000"; // Localhost (iOS Simulator: localhost, Android Emulator: http://10.0.2.2:8000)
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
