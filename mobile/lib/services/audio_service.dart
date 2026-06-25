@@ -191,13 +191,6 @@ class AudioService {
     try {
       await FlutterPcmSound.play();
       await _setAndroidSpeakerphone(true);
-      
-      // Force speakerphone on iOS using WebRTC helper
-      try {
-        await Helper.setSpeakerphoneOn(true);
-      } catch (e) {
-        print("[AudioService] Failed to set iOS speakerphone: $e");
-      }
     } catch (e) {
       print("[AudioService] Error starting playback stream: $e");
     }
@@ -261,8 +254,18 @@ class AudioService {
     }
   }
 
+  bool _wasStreamPlayingBeforeUrl = false;
+
   // ៧b. ចាក់សំឡេងពី URL (សម្រាប់សារសំឡេង PTT ដែលបានរក្សាទុក)
   Future<void> playUrl(String url, {required Function() onFinished}) async {
+    // Stop PcmSound stream player first on iOS/Android to prevent native crash
+    if (_isPlaying) {
+      _wasStreamPlayingBeforeUrl = true;
+      await stopPlaybackStream();
+    } else {
+      _wasStreamPlayingBeforeUrl = false;
+    }
+
     if (_urlPlayer == null) {
       _urlPlayer = FlutterSoundPlayer();
       await _urlPlayer!.openPlayer();
@@ -273,26 +276,35 @@ class AudioService {
     }
 
     try {
-      // Force speakerphone on iOS using WebRTC helper
-      try {
-        await Helper.setSpeakerphoneOn(true);
-      } catch (e) {
-        print("[AudioService] Failed to set iOS speakerphone on playUrl: $e");
-      }
-
       await _urlPlayer!.startPlayer(
         fromURI: url,
-        whenFinished: onFinished,
+        whenFinished: () async {
+          onFinished();
+          // Restart PcmSound stream player if it was active
+          if (_wasStreamPlayingBeforeUrl) {
+            _wasStreamPlayingBeforeUrl = false;
+            await startPlaybackStream();
+          }
+        },
       );
     } catch (e) {
       print("[AudioService] Error playing URL $url: $e");
       onFinished();
+      if (_wasStreamPlayingBeforeUrl) {
+        _wasStreamPlayingBeforeUrl = false;
+        await startPlaybackStream();
+      }
     }
   }
 
   Future<void> stopUrlPlayer() async {
     if (_urlPlayer != null && _urlPlayer!.isPlaying) {
       await _urlPlayer!.stopPlayer();
+    }
+    // Restart PcmSound stream player if it was active before URL play
+    if (_wasStreamPlayingBeforeUrl) {
+      _wasStreamPlayingBeforeUrl = false;
+      await startPlaybackStream();
     }
   }
 
