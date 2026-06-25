@@ -3,9 +3,8 @@ import 'dart:typed_data';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebSocketService {
-  // 🟢 កំណត់អាសយដ្ឋាន IP សម្រាប់តភ្ជាប់ទៅ Voice Server (FastAPI)
   static const String wsUrl = "wss://api-ptt.stpmtelecom.com"; // Production
-  // static const String wsUrl = "ws://localhost:9000"; // Localhost (iOS Simulator: localhost, Android Emulator: ws://10.0.2.2:9000)
+  // static const String wsUrl = "ws://192.168.100.11:9000"; // Localhost (192.168.100.11)
 
   WebSocketChannel? _channel;
   bool isConnected = false;
