@@ -140,4 +140,31 @@ class MessageController extends Controller
         // Return reversed to order chronologically (oldest to newest)
         return response()->json($messages->reverse()->values());
     }
+
+    /**
+     * 3. API for deleting one's own message.
+     */
+    public function destroy($id)
+    {
+        $message = Message::findOrFail($id);
+
+        // Ensure the logged in user is the sender of the message
+        if (auth()->id() !== $message->sender_id) {
+            return response()->json(['message' => 'Unauthorized to delete this message'], 403);
+        }
+
+        // If it is a voice/file message and has a filePath, delete it from storage
+        if ($message->file_path) {
+            // Replace "/storage/" prefix with "" to delete via Storage disk
+            $storagePath = str_replace('/storage/', '', $message->file_path);
+            if (Storage::disk('public')->exists($storagePath)) {
+                Storage::disk('public')->delete($storagePath);
+            }
+        }
+
+        $message->delete();
+
+        return response()->json(['message' => 'Message deleted successfully']);
+    }
 }
+

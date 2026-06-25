@@ -235,4 +235,20 @@ class ApiService {
       return [];
     }
   }
+
+  // ១០. លុបសារសន្ទនា (Delete Chat Message)
+  static Future<bool> deleteMessage(int messageId) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/messages/$messageId'),
+        headers: headers,
+      );
+      debugPrint('[API] deleteMessage($messageId) status=${response.statusCode}');
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[API] deleteMessage exception: $e');
+      return false;
+    }
+  }
 }

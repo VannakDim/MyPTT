@@ -310,6 +310,14 @@ class ConsoleTabState extends State<ConsoleTab> {
               message: preview.length > 80 ? '${preview.substring(0, 80)}...' : preview,
             );
           }
+        } else if (type == 'delete_message') {
+          final dynamic rawId = frame['id'];
+          final int? msgId = rawId is int ? rawId : (rawId != null ? int.tryParse(rawId.toString()) : null);
+          if (msgId != null) {
+            setState(() {
+              _chatMessages.removeWhere((m) => m.id == msgId);
+            });
+          }
         } else if (type == 'ptt_status') {
           final status = frame['status'];
           setState(() {
@@ -1093,44 +1101,50 @@ class ConsoleTabState extends State<ConsoleTab> {
                                   ),
                                   const SizedBox(height: 4),
                                 ],
-                                if (msg.type == 'chat')
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: msg.isMe ? const Color(0xFF0EA5E9) : const Color(0xFF1E293B),
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: const Radius.circular(12),
-                                        topRight: const Radius.circular(12),
-                                        bottomLeft: msg.isMe ? const Radius.circular(12) : const Radius.circular(0),
-                                        bottomRight: msg.isMe ? const Radius.circular(0) : const Radius.circular(12),
-                                      ),
-                                      border: Border.all(color: const Color(0xFF334155)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          msg.text ?? '',
-                                          style: const TextStyle(color: Colors.white, fontSize: 13),
-                                        ),
-                                        if (_shouldShowTime(i)) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _formatMessageTime(msg.createdAt),
-                                            style: TextStyle(
-                                              color: msg.isMe ? Colors.white70 : Colors.white54,
-                                              fontSize: 9,
+                                GestureDetector(
+                                  onLongPress: () {
+                                    if (msg.isMe && msg.id != null) {
+                                      _showDeleteDialog(msg);
+                                    }
+                                  },
+                                  child: msg.type == 'chat'
+                                      ? Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: msg.isMe ? const Color(0xFF0EA5E9) : const Color(0xFF1E293B),
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: const Radius.circular(12),
+                                              topRight: const Radius.circular(12),
+                                              bottomLeft: msg.isMe ? const Radius.circular(12) : const Radius.circular(0),
+                                              bottomRight: msg.isMe ? const Radius.circular(0) : const Radius.circular(12),
                                             ),
+                                            border: Border.all(color: const Color(0xFF334155)),
                                           ),
-                                        ],
-                                      ],
-                                    ),
-                                  )
-                                else if (msg.type == 'file')
-                                  _buildFileShareWidget(msg, i)
-                                else if (msg.type == 'voice')
-                                  _buildVoiceMessageWidget(msg, i),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                msg.text ?? '',
+                                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                              ),
+                                              if (_shouldShowTime(i)) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  _formatMessageTime(msg.createdAt),
+                                                  style: TextStyle(
+                                                    color: msg.isMe ? Colors.white70 : Colors.white54,
+                                                    fontSize: 9,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        )
+                                      : msg.type == 'file'
+                                          ? _buildFileShareWidget(msg, i)
+                                          : _buildVoiceMessageWidget(msg, i),
+                                ),
                               ],
                             ),
                           );
@@ -1327,6 +1341,54 @@ class ConsoleTabState extends State<ConsoleTab> {
         if (_callMode != "idle") _buildCallOverlay(),
       ],
     );
+  }
+
+  void _showDeleteDialog(ChatMessage msg) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text("លុបសារ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text("តើអ្នកពិតជាចង់លុបសារនេះមែនទេ?", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("បោះបង់", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteMessage(msg);
+            },
+            child: const Text("លុប", style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteMessage(ChatMessage msg) async {
+    if (msg.id == null) return;
+    try {
+      final success = await ApiService.deleteMessage(msg.id!);
+      if (success) {
+        setState(() {
+          _chatMessages.removeWhere((m) => m.id == msg.id);
+        });
+        if (_wsService.isConnected) {
+          _wsService.sendAction("delete_message", {"id": msg.id});
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("លុបសារមិនបានជោគជ័យ")),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error deleting message: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("មានបញ្ហាក្នុងការលុបសារ")),
+      );
+    }
   }
 
   @override

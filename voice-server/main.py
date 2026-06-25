@@ -147,6 +147,12 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                         await websocket.send_text(json.dumps({"type": "ptt_status", "status": "idle"}))
                         await manager.broadcast_text(channel, {"type": "system", "message": f"✅ ខ្សែទំនេរ"})
                         await process_voice_message(channel, ptt_res["speaker"], ptt_res["audio_bytes"])
+                elif action == "delete_message":
+                    msg_id = data.get("id")
+                    await manager.broadcast_text(channel, {
+                        "type": "delete_message",
+                        "id": msg_id
+                    })
                 
                 # --- ប្រព័ន្ធ Chat ធម្មតា ---
                 elif action == "chat_message":

@@ -104,6 +104,7 @@
           <p v-if="msg.type === 'chat'" class="msg-text">
             <span>{{ msg.text }}</span>
             <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+            <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
           </p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
             <img v-if="msg.file_type && msg.file_type.startsWith('image/')" :src="getFileUrl(msg)" class="preview-img" />
@@ -113,6 +114,7 @@
               </a>
               <span v-else class="image-name">{{ msg.file_name }}</span>
               <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
             </div>
           </div>
           <div v-else-if="msg.type === 'voice'" class="msg-voice">
@@ -121,6 +123,7 @@
                 {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់...' : '🔊 សារសំឡេង PTT' }}
               </button>
               <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
             </div>
           </div>
         </div>
@@ -562,6 +565,9 @@ const connectWS = () => {
           await nextTick(); 
           if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
         } 
+        else if (data && data.type === 'delete_message') {
+          chatMessages.value = chatMessages.value.filter(msg => Number(msg.id) !== Number(data.id));
+        }
         else if (data && data.type === 'webrtc_signal') {
           handleWebrtcSignal(data);
         }
@@ -785,6 +791,35 @@ const stopRecording = () => { if (processorNode) { processorNode.disconnect(); p
 const playAudio = async (blob) => { if (isMuted.value) return; try { if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); if (playCtx.state === 'suspended') await playCtx.resume(); const arrayBuffer = await blob.arrayBuffer(); const int16 = new Int16Array(arrayBuffer); const float32 = new Float32Array(int16.length); for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x7FFF; const audioBuffer = playCtx.createBuffer(1, float32.length, 16000); audioBuffer.getChannelData(0).set(float32); const source = playCtx.createBufferSource(); source.buffer = audioBuffer; source.connect(playCtx.destination); source.start(); } catch (e) { console.error(e); } };
 const sendChat = () => { if (!typedText.value.trim()) return; ws.send(JSON.stringify({ action: "chat_message", text: typedText.value })); typedText.value = ""; };
 const sendFile = (event) => { const file = event.target.files[0]; if (!file) return; if (file.size > 5 * 1024 * 1024) { alert("File ត្រូវតែមានទំហំតូចជាង 5MB"); return; } const reader = new FileReader(); reader.onload = () => { ws.send(JSON.stringify({ action: "file_share", file_name: file.name, file_type: file.type, file_data: reader.result })); }; reader.readAsDataURL(file); };
+const deleteMessage = async (msg) => {
+  if (!msg || !msg.id) return;
+  if (!confirm("តើអ្នកពិតជាចង់លុបសារនេះមែនទេ?")) return;
+  try {
+    const cleanToken = props.userToken ? props.userToken.trim() : '';
+    const response = await fetch(`${import.meta.env.VITE_LARAVEL_API_URL}/api/messages/${msg.id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Accept': 'application/json'
+      }
+    });
+    if (response.ok) {
+      chatMessages.value = chatMessages.value.filter(m => m.id !== msg.id);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          action: "delete_message",
+          id: msg.id
+        }));
+      }
+    } else {
+      const err = await response.json();
+      alert(err.message || "លុបសារមិនបានជោគជ័យ");
+    }
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    alert("មានបញ្ហាក្នុងការលុបសារ");
+  }
+};
 const handleBeforeUnload = () => { closeConnection(); };
 const closeConnection = () => { if (ws) ws.close(); stopCallAudio(); };
 
@@ -996,6 +1031,24 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 }
 .msg-me .msg-time {
   color: #638253;
+}
+.delete-msg-btn {
+  background: none;
+  border: none;
+  color: #e53e3e;
+  cursor: pointer;
+  padding: 2px;
+  font-size: 11px;
+  margin-left: 8px;
+  opacity: 0.5;
+  transition: opacity 0.2s, transform 0.2s;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+}
+.delete-msg-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
 }
 .file-meta, .voice-meta {
   display: flex;
