@@ -105,8 +105,11 @@ class ConsoleTabState extends State<ConsoleTab> {
   void initState() {
     super.initState();
     _chatScrollController.addListener(_onChatScroll);
-    _initUsername().then((_) {
-      _initAudio();
+    _initUsername().then((_) async {
+      await _initAudio();
+      if (_webrtcService != null) {
+        await _webrtcService!.initializeLocalStream();
+      }
       if (widget.selectedGroup != null) {
         _connectWebSocket(widget.selectedGroup!.name);
         _fetchGroupMembers(widget.selectedGroup!.id);
@@ -256,8 +259,8 @@ class ConsoleTabState extends State<ConsoleTab> {
     });
     _wsService.disconnect();
     
-    _webrtcService?.dispose();
-    _webrtcService = WebRTCService(_wsService, _currentUsername);
+    // Clean up old peer connections while keeping the initialized local stream alive
+    _webrtcService?.cleanAllPeers();
 
     _wsService.connect(
       channelName: channelName,

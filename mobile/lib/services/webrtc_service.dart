@@ -234,12 +234,17 @@ class WebRTCService {
     }
   }
 
-  // Clean up all peers and local stream
-  Future<void> dispose() async {
+  // Clean up all peer connections but keep local stream
+  Future<void> cleanAllPeers() async {
     final keys = List<String>.from(_peerConnections.keys);
     for (var key in keys) {
       await cleanupPeer(key);
     }
+  }
+
+  // Clean up all peers and local stream
+  Future<void> dispose() async {
+    await cleanAllPeers();
     if (_localStream != null) {
       await _localStream!.dispose();
       _localStream = null;
