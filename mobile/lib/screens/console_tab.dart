@@ -37,7 +37,7 @@ class ConsoleTab extends StatefulWidget {
   State<ConsoleTab> createState() => ConsoleTabState();
 }
 
-class ConsoleTabState extends State<ConsoleTab> {
+class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   final _wsService = WebSocketService();
   final _audioService = AudioService();
   final _notificationService = NotificationService();
@@ -104,6 +104,7 @@ class ConsoleTabState extends State<ConsoleTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _chatScrollController.addListener(_onChatScroll);
     _initUsername().then((_) async {
       await _initAudio();
@@ -1391,7 +1392,25 @@ class ConsoleTabState extends State<ConsoleTab> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint("[AppLifecycle] App resumed. Waiting to check connection...");
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        debugPrint("[AppLifecycle] App resumed checking: isConnected=${_wsService.isConnected}, selectedGroup=${widget.selectedGroup?.name}");
+        if (!_wsService.isConnected && widget.selectedGroup != null) {
+          debugPrint("[AppLifecycle] WebSocket not connected on resume. Reconnecting to ${widget.selectedGroup!.name}...");
+          _connectWebSocket(widget.selectedGroup!.name);
+          _fetchGroupMembers(widget.selectedGroup!.id);
+          _fetchGroupMessages(widget.selectedGroup!.id);
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _wsService.disconnect();
     _webrtcService?.dispose();
     _audioService.dispose();
