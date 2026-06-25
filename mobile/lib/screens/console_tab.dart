@@ -1485,44 +1485,13 @@ class _SwipeToRevealState extends State<SwipeToReveal> with SingleTickerProvider
   Widget build(BuildContext context) {
     if (!widget.isMe) return widget.child;
 
-    return Stack(
-      alignment: Alignment.centerRight,
-      children: [
-        Positioned(
-          top: 0,
-          bottom: 0,
-          right: 10,
-          child: Center(
-            child: GestureDetector(
-              onTap: () {
-                close();
-                widget.onDelete();
-              },
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.delete_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-          ),
-        ),
-        GestureDetector(
-          onHorizontalDragUpdate: _onHorizontalDragUpdate,
-          onHorizontalDragEnd: _onHorizontalDragEnd,
-          child: Transform.translate(
-            offset: Offset(_dragOffset, 0.0),
-            child: widget.child,
-          ),
-        ),
-      ],
+    return GestureDetector(
+      onHorizontalDragUpdate: _onHorizontalDragUpdate,
+      onHorizontalDragEnd: _onHorizontalDragEnd,
+      child: Transform.translate(
+        offset: Offset(_dragOffset, 0.0),
+        child: widget.child,
+      ),
     );
   }
 }
