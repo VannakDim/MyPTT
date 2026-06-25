@@ -6,6 +6,7 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class AudioService {
   static const _channel = MethodChannel('com.example.mobile/audio');
@@ -189,8 +190,14 @@ class AudioService {
     _isPlaying = true;
     try {
       await FlutterPcmSound.play();
-      // Force speakerphone ON immediately after starting playback
       await _setAndroidSpeakerphone(true);
+      
+      // Force speakerphone on iOS using WebRTC helper
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (e) {
+        print("[AudioService] Failed to set iOS speakerphone: $e");
+      }
     } catch (e) {
       print("[AudioService] Error starting playback stream: $e");
     }
@@ -200,12 +207,12 @@ class AudioService {
   Future<void> playChunk(Uint8List chunk) async {
     if (!_isPlayerInitialized || isMuted) return;
     try {
-      // Convert Uint8List bytes to Int16List (16-bit PCM samples)
-      final int16List = Int16List.view(
-        chunk.buffer,
-        chunk.offsetInBytes,
-        chunk.lengthInBytes ~/ 2,
-      );
+      // Safely convert Uint8List bytes to Int16List (16-bit PCM samples) to prevent alignment errors
+      final byteData = chunk.buffer.asByteData(chunk.offsetInBytes, chunk.length);
+      final int16List = Int16List(chunk.length ~/ 2);
+      for (int i = 0; i < int16List.length; i++) {
+        int16List[i] = byteData.getInt16(i * 2, Endian.little);
+      }
       
       _audioQueue.addAll(int16List);
 
@@ -215,8 +222,8 @@ class AudioService {
         _audioQueue.removeRange(0, _audioQueue.length - 4000);
       }
 
-      // Exit buffering state if we have accumulated enough samples (e.g. 3200 samples = 200ms)
-      if (_isBuffering && _audioQueue.length >= 3200) {
+      // Exit buffering state if we have accumulated enough samples (e.g. 1600 samples = 100ms)
+      if (_isBuffering && _audioQueue.length >= 1600) {
         _isBuffering = false;
         // Make sure speakerphone is still forced on during state changes
         _setAndroidSpeakerphone(true).catchError((_) {});
