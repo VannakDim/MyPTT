@@ -41,7 +41,9 @@ def create_wav_header(pcm_data_len: int, sample_rate: int = 16000, bits_per_samp
     return bytes(header)
 
 def save_message_to_laravel_sync(payload):
-    laravel_url = "http://backend:8000/api/messages"
+    auth_url = os.getenv("LARAVEL_AUTH_URL", "http://localhost:8000/api/user")
+    base_url = auth_url.split("/api/user")[0] if "/api/user" in auth_url else "http://localhost:8000"
+    laravel_url = f"{base_url}/api/messages"
     headers = {
         "X-Voice-Server-Secret": os.getenv("VOICE_SERVER_SECRET", "myptt_super_secret_key"),
         "Content-Type": "application/json",
