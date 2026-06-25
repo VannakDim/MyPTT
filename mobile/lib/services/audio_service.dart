@@ -273,9 +273,15 @@ class AudioService {
     }
 
     try {
+      // Force speakerphone on iOS using WebRTC helper
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (e) {
+        print("[AudioService] Failed to set iOS speakerphone on playUrl: $e");
+      }
+
       await _urlPlayer!.startPlayer(
         fromURI: url,
-        codec: Codec.pcm16WAV,
         whenFinished: onFinished,
       );
     } catch (e) {

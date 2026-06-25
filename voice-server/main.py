@@ -50,13 +50,16 @@ def save_message_to_laravel_sync(payload):
     try:
         response = requests.post(laravel_url, json=payload, headers=headers, timeout=15)
         print(f"[Laravel Save] Status: {response.status_code}")
+        if response.status_code in [200, 201]:
+            return response.json()
     except Exception as e:
         print(f"[Laravel Save Error] Failed: {e}")
+    return None
 
 def save_message_to_laravel(payload):
     asyncio.create_task(asyncio.to_thread(save_message_to_laravel_sync, payload))
 
-def process_voice_message(channel_name, speaker, audio_bytes):
+async def process_voice_message(channel_name, speaker, audio_bytes):
     if not audio_bytes or len(audio_bytes) < 16000:
         print(f"[Voice Skip] Too short: {len(audio_bytes) if audio_bytes else 0} bytes")
         return
@@ -74,7 +77,26 @@ def process_voice_message(channel_name, speaker, audio_bytes):
         "file_type": "audio/wav",
         "file_data": base64_data
     }
-    save_message_to_laravel(payload)
+    
+    # Save to Laravel and wait for the response to get file_path
+    saved_msg = await asyncio.to_thread(save_message_to_laravel_sync, payload)
+    
+    file_path = None
+    if saved_msg and isinstance(saved_msg, dict):
+        file_path = saved_msg.get("file_path")
+        
+    # Broadcast the voice message to all WebSocket clients in the channel
+    broadcast_data = {
+        "type": "voice",
+        "id": saved_msg.get("id") if saved_msg else None,
+        "sender": speaker,
+        "file_path": file_path,
+        "file_name": payload["file_name"],
+        "file_type": payload["file_type"],
+        "file_data": base64_data,
+        "created_at": saved_msg.get("created_at") if (saved_msg and saved_msg.get("created_at")) else None
+    }
+    await manager.broadcast_text(channel_name, broadcast_data)
 
 
 @app.websocket("/ws/{channel}")
@@ -122,7 +144,7 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     if ptt_res:
                         await websocket.send_text(json.dumps({"type": "ptt_status", "status": "idle"}))
                         await manager.broadcast_text(channel, {"type": "system", "message": f"✅ ខ្សែទំនេរ"})
-                        process_voice_message(channel, ptt_res["speaker"], ptt_res["audio_bytes"])
+                        await process_voice_message(channel, ptt_res["speaker"], ptt_res["audio_bytes"])
                 
                 # --- ប្រព័ន្ធ Chat ធម្មតា ---
                 elif action == "chat_message":
@@ -183,11 +205,11 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
     except WebSocketDisconnect:
         disconnect_res = await manager.disconnect(channel, websocket)
         if disconnect_res:
-            process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
+            await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
         await manager.broadcast_text(channel, {"type": "system", "message": f"🚶 {username} បានចាកចេញ"})
         
     except Exception as e:
         print(f"Error encountered: {e}")
         disconnect_res = await manager.disconnect(channel, websocket)
         if disconnect_res:
-            process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
+            await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])

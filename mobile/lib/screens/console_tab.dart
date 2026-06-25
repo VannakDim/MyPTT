@@ -107,9 +107,6 @@ class ConsoleTabState extends State<ConsoleTab> {
     _chatScrollController.addListener(_onChatScroll);
     _initUsername().then((_) async {
       await _initAudio();
-      if (_webrtcService != null) {
-        await _webrtcService!.initializeLocalStream();
-      }
       if (widget.selectedGroup != null) {
         _connectWebSocket(widget.selectedGroup!.name);
         _fetchGroupMembers(widget.selectedGroup!.id);
@@ -258,9 +255,6 @@ class ConsoleTabState extends State<ConsoleTab> {
       _systemStatus = "Connecting...";
     });
     _wsService.disconnect();
-    
-    // Clean up old peer connections while keeping the initialized local stream alive
-    _webrtcService?.cleanAllPeers();
 
     _wsService.connect(
       channelName: channelName,
@@ -299,7 +293,7 @@ class ConsoleTabState extends State<ConsoleTab> {
 
         if (type == 'system') {
           _addLog(frame['message'] ?? '');
-        } else if (type == 'chat' || type == 'file') {
+        } else if (type == 'chat' || type == 'file' || type == 'voice') {
           if (frame['created_at'] == null) {
             frame['created_at'] = DateTime.now().toUtc().toIso8601String();
           }
@@ -321,14 +315,11 @@ class ConsoleTabState extends State<ConsoleTab> {
           setState(() {
             if (status == 'talking_granted') {
               _pttState = "talking";
-              _webrtcService?.setMute(false);
               _startMicStreaming();
             } else if (status == 'line_busy') {
               _pttState = "busy";
-              _webrtcService?.setMute(true);
             } else {
               _pttState = "idle";
-              _webrtcService?.setMute(true);
               _audioService.stopRecording();
             }
           });
@@ -338,12 +329,8 @@ class ConsoleTabState extends State<ConsoleTab> {
           setState(() {
             _onlineUserList = list.map((e) => e.toString().toLowerCase()).toList();
           });
-          final List<String> stringUserList = list.map((e) => e.toString()).toList();
-          _webrtcService?.updatePeers(stringUserList);
         } else if (type == 'webrtc_signal') {
-          final sender = frame['sender'] as String;
-          final payload = frame['payload'] as Map<String, dynamic>;
-          _webrtcService?.handleSignal(sender, payload);
+          // Unused - PTT uses WebSocket PCM bytes
         } else if (type == 'call_signal') {
           _handleCallSignal(frame);
         }

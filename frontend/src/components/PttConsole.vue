@@ -554,7 +554,7 @@ const connectWS = () => {
             }
           }
         } 
-        else if (data && (data.type === 'chat' || data.type === 'file')) {
+        else if (data && (data.type === 'chat' || data.type === 'file' || data.type === 'voice')) {
           if (!data.created_at) {
             data.created_at = new Date().toISOString();
           }
