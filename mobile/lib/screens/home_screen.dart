@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Group? _selectedGroup;
   bool _showLogs = false;
   bool _showPttButton = true;
+  double _chatFontSize = 13.0;
   String _currentView = 'chat'; // 'chat' or 'users'
   final GlobalKey<ConsoleTabState> _consoleKey = GlobalKey<ConsoleTabState>();
 
@@ -60,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _role = prefs.getString('ptt_role') ?? 'user';
       _avatarStr = prefs.getString('ptt_avatar') ?? '';
       _showPttButton = prefs.getBool('ptt_show_button') ?? true;
+      _chatFontSize = prefs.getDouble('ptt_chat_font_size') ?? 13.0;
     });
     if (_token != null) {
       _fetchGroups();
@@ -407,6 +409,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
 
             ListTile(
+              leading: const Icon(Icons.format_size_rounded, color: Color(0xFFF1C40F), size: 20),
+              title: const Text("ទំហំអក្សរសារ", style: TextStyle(color: Colors.white, fontSize: 13)),
+              trailing: Text("${_chatFontSize.toInt()} px", style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13)),
+              onTap: () {
+                Navigator.pop(context);
+                _showFontSizeDialog();
+              },
+            ),
+
+            ListTile(
               leading: const Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 20),
               title: const Text("🚪 ចាកចេញពីគណនី", style: TextStyle(color: Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
               onTap: () {
@@ -422,6 +434,116 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _showFontSizeDialog() {
+    double tempSize = _chatFontSize;
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              title: const Text(
+                "ទំហំអក្សរសារ",
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "គំរូសារសន្ទនា (Preview)",
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF334155)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0EA5E9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            "សួស្តី! នេះជាគំរូទំហំអក្សរ។",
+                            style: TextStyle(color: Colors.white, fontSize: tempSize),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "09:30 AM",
+                          style: TextStyle(
+                            color: Colors.white54, 
+                            fontSize: tempSize * 0.7 > 9 ? tempSize * 0.7 : 9,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("A-", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Expanded(
+                        child: Slider(
+                          value: tempSize,
+                          min: 11.0,
+                          max: 24.0,
+                          divisions: 13,
+                          activeColor: const Color(0xFF38BDF8),
+                          inactiveColor: const Color(0xFF334155),
+                          onChanged: (val) {
+                            setDialogState(() {
+                              tempSize = val;
+                            });
+                          },
+                        ),
+                      ),
+                      const Text("A+", style: TextStyle(color: Colors.white70, fontSize: 18)),
+                    ],
+                  ),
+                  Center(
+                    child: Text(
+                      "${tempSize.toInt()} px",
+                      style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("បោះបង់", style: TextStyle(color: Color(0xFF64748B))),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setDouble('ptt_chat_font_size', tempSize);
+                    setState(() {
+                      _chatFontSize = tempSize;
+                    });
+                    if (mounted) Navigator.pop(context);
+                  },
+                  child: const Text("រក្សាទុក", style: TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildBody() {
     if (_currentView == 'users' && _role == 'admin') {
       return UsersTab(userToken: _token!);
@@ -433,6 +555,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       myGroups: _myGroups,
       showLogs: _showLogs,
       showPttButton: _showPttButton,
+      fontSize: _chatFontSize,
     );
   }
 }

@@ -23,6 +23,7 @@ class ConsoleTab extends StatefulWidget {
   final List<Group> myGroups;
   final bool showLogs;
   final bool showPttButton;
+  final double fontSize;
 
   const ConsoleTab({
     super.key,
@@ -31,6 +32,7 @@ class ConsoleTab extends StatefulWidget {
     required this.myGroups,
     required this.showLogs,
     this.showPttButton = true,
+    this.fontSize = 13.0,
   });
 
   @override
@@ -816,7 +818,11 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               const SizedBox(width: 6),
               Text(
                 msg.fileName ?? 'File',
-                style: const TextStyle(color: Colors.white, fontSize: 11, decoration: TextDecoration.underline),
+                style: TextStyle(
+                  color: Colors.white, 
+                  fontSize: widget.fontSize * 0.85 > 10 ? widget.fontSize * 0.85 : 10, 
+                  decoration: TextDecoration.underline,
+                ),
               ),
             ],
           ),
@@ -824,7 +830,10 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             const SizedBox(height: 4),
             Text(
               _formatMessageTime(msg.createdAt),
-              style: const TextStyle(color: Colors.white54, fontSize: 9),
+              style: TextStyle(
+                color: Colors.white54, 
+                fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+              ),
             ),
           ],
         ],
@@ -886,7 +895,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               const SizedBox(width: 6),
               Text(
                 "សារសំឡេង PTT",
-                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500),
+                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: widget.fontSize, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -896,7 +905,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               _formatMessageTime(msg.createdAt),
               style: TextStyle(
                 color: msg.isMe ? Colors.white70 : Colors.white54,
-                fontSize: 9,
+                fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
               ),
             ),
           ],
@@ -1126,16 +1135,16 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                                             children: [
                                               Text(
                                                 msg.text ?? '',
-                                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                                style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
                                               ),
                                               if (_shouldShowTime(i)) ...[
                                                 const SizedBox(height: 4),
                                                 Text(
                                                   _formatMessageTime(msg.createdAt),
-                                                  style: TextStyle(
-                                                    color: msg.isMe ? Colors.white70 : Colors.white54,
-                                                    fontSize: 9,
-                                                  ),
+                                                   style: TextStyle(
+                                                     color: msg.isMe ? Colors.white70 : Colors.white54,
+                                                     fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                                                   ),
                                                 ),
                                               ],
                                             ],
