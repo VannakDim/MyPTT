@@ -1101,11 +1101,10 @@ class ConsoleTabState extends State<ConsoleTab> {
                                   ),
                                   const SizedBox(height: 4),
                                 ],
-                                GestureDetector(
-                                  onLongPress: () {
-                                    if (msg.isMe && msg.id != null) {
-                                      _showDeleteDialog(msg);
-                                    }
+                                SwipeToReveal(
+                                  isMe: msg.isMe && msg.id != null,
+                                  onDelete: () {
+                                    _showDeleteDialog(msg);
                                   },
                                   child: msg.type == 'chat'
                                       ? Container(
@@ -1403,5 +1402,124 @@ class ConsoleTabState extends State<ConsoleTab> {
     _logsScrollController.dispose();
     _pttPositionNotifier.dispose();
     super.dispose();
+  }
+}
+
+class SwipeToReveal extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onDelete;
+  final bool isMe;
+
+  const SwipeToReveal({
+    Key? key,
+    required this.child,
+    required this.onDelete,
+    required this.isMe,
+  }) : super(key: key);
+
+  @override
+  State<SwipeToReveal> createState() => _SwipeToRevealState();
+}
+
+class _SwipeToRevealState extends State<SwipeToReveal> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  double _dragOffset = 0.0;
+  final double _maxRevealWidth = 70.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _controller.addListener(() {
+      if (_controller.isAnimating) {
+        setState(() {
+          _dragOffset = _controller.value * -_maxRevealWidth;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (!widget.isMe) return;
+    _controller.stop();
+    setState(() {
+      _dragOffset += details.primaryDelta!;
+      if (_dragOffset > 0.0) _dragOffset = 0.0;
+      if (_dragOffset < -_maxRevealWidth * 1.5) {
+        _dragOffset = -_maxRevealWidth * 1.5;
+      }
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (!widget.isMe) return;
+    double currentRatio = _dragOffset / -_maxRevealWidth;
+    if (currentRatio < 0.0) currentRatio = 0.0;
+    if (currentRatio > 1.0) currentRatio = 1.0;
+    _controller.value = currentRatio;
+
+    if (_dragOffset < -_maxRevealWidth / 2) {
+      _controller.animateTo(1.0, curve: Curves.easeOut);
+    } else {
+      _controller.animateTo(0.0, curve: Curves.easeOut);
+    }
+  }
+
+  void close() {
+    _controller.animateTo(0.0, curve: Curves.easeOut);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isMe) return widget.child;
+
+    return Stack(
+      alignment: Alignment.centerRight,
+      children: [
+        Positioned(
+          top: 0,
+          bottom: 0,
+          right: 10,
+          child: Center(
+            child: GestureDetector(
+              onTap: () {
+                close();
+                widget.onDelete();
+              },
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.delete_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        ),
+        GestureDetector(
+          onHorizontalDragUpdate: _onHorizontalDragUpdate,
+          onHorizontalDragEnd: _onHorizontalDragEnd,
+          child: Transform.translate(
+            offset: Offset(_dragOffset, 0.0),
+            child: widget.child,
+          ),
+        ),
+      ],
+    );
   }
 }
