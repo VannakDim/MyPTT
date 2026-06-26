@@ -64,14 +64,25 @@ class WebSocketService {
     _channel!.sink.add(jsonEncode(payload));
   }
 
-  // ៣. ផ្ញើកញ្ចប់សំឡេងជាទម្រង់ Binary PCM (Send Audio Bytes)
+  // ៣. ផ្ញើកញ្ចប់សំឡេងជាទម្រង់ Binary PCM (Send Audio Bytes) — ប្រើសម្រាប់ PTT group
   void sendAudio(Uint8List audioBytes) {
     if (_channel == null || !isConnected) return;
     print("[WS Outgoing Audio] Sending ${audioBytes.length} bytes");
     _channel!.sink.add(audioBytes);
   }
 
-  // ៤. ផ្ដាច់ការតភ្ជាប់ (Disconnect)
+  // ៤. ផ្ញើសំឡេងការហៅ Private ចំគោលដៅ (Private Call Audio — JSON+base64, មិន broadcast)
+  void sendPrivateAudio(Uint8List audioBytes, String targetUser) {
+    if (_channel == null || !isConnected) return;
+    final payload = {
+      'action': 'call_audio',
+      'target': targetUser,
+      'audio': base64Encode(audioBytes),
+    };
+    _channel!.sink.add(jsonEncode(payload));
+  }
+
+  // ៥. ផ្ដាច់ការតភ្ជាប់ (Disconnect)
   void disconnect() {
     if (_channel != null) {
       _channel!.sink.close();

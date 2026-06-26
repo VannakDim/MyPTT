@@ -283,6 +283,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   void _handleIncomingData(dynamic data) async {
     if (data is List<int>) {
       debugPrint("[IncomingData] Binary chunk received: ${data.length} bytes, type: ${data.runtimeType}");
+      // ពេលកំពុងហៅ private — binary ដែលទៅដល់ user នោះ server ធានាថាមកពី call partner ប៉ុណ្ណោះ
+      // ដូច្នេះចាក់ play បានដោយសុវត្ថិភាព (group PTT audio មិនត្រូវបាន broadcast មកដល់យើងទេ)
       final chunk = data is Uint8List ? data : Uint8List.fromList(data);
       _audioService.playChunk(chunk);
       return;
@@ -419,8 +421,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   void _startMicStreaming() async {
     try {
       await _audioService.startRecording((bytes) {
-        final bool canTransmit = (_pttState == 'talking') || (_callMode == 'connected');
-        if (_wsService.isConnected && canTransmit) {
+        if (!_wsService.isConnected) return;
+        if (_callMode == 'connected') {
+          // ការហៅ Private: ផ្ញើសំឡេងចំគោលដៅប៉ុណ្ណោះ — មិន broadcast ទៅ group
+          _wsService.sendPrivateAudio(bytes, _activeCallUser);
+        } else if (_pttState == 'talking') {
+          // PTT ធម្មតា: broadcast ទៅ group
           _wsService.sendAudio(bytes);
         }
       });
