@@ -17,6 +17,7 @@ import '../widgets/image_viewer.dart';
 import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
 import '../services/chat_cache_service.dart';
+import 'login_screen.dart';
 
 class ConsoleTab extends StatefulWidget {
   final String userToken;
@@ -333,6 +334,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
 
         if (type == 'system') {
           _addLog(frame['message'] ?? '');
+        } else if (type == 'force_logout') {
+          final message = frame['message'] ?? 'គណនីរបស់អ្នកត្រូវបានចូលប្រើប្រាស់នៅលើឧបករណ៍ផ្សេងទៀត។';
+          _showForceLogoutDialog(message);
         } else if (type == 'chat' || type == 'file' || type == 'voice') {
           if (frame['created_at'] == null) {
             frame['created_at'] = DateTime.now().toUtc().toIso8601String();
@@ -587,6 +591,65 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
 
+
+  void _showForceLogoutDialog(String message) {
+    if (!mounted) return;
+    
+    // Stop all audio immediately
+    _audioService.stopPlaybackStream();
+    _wsService.disconnect();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must tap OK to exit
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false, // Prevent back button
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF0F172A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0xFF334155)),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24),
+                SizedBox(width: 8),
+                Text(
+                  "ការជូនដំណឹងពីគណនី",
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: Text(
+              message,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.clear();
+                  if (context.mounted) {
+                    // Navigate back to login and discard stack
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      (Route<dynamic> route) => false,
+                    );
+                  }
+                },
+                child: const Text(
+                  "យល់ព្រម",
+                  style: TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   void makeCall(String targetUser) {
     setState(() {

@@ -531,6 +531,12 @@ const connectWS = () => {
     } else {
       try {
         const data = JSON.parse(event.data);
+        if (data && data.type === 'force_logout') {
+          alert(data.message);
+          localStorage.clear();
+          window.location.reload();
+          return;
+        }
         if (data && data.type === 'user_count') {
           onlineUsersCount.value = Number(data.count) || 0;
           if (Array.isArray(data.user_list)) {

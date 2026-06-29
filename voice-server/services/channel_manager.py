@@ -2,6 +2,23 @@ from fastapi import WebSocket
 import json
 import asyncio
 
+def get_device_info(user_agent: str) -> str:
+    if not user_agent:
+        return "ឧបករណ៍មិនស្គាល់"
+    ua = user_agent.lower()
+    if "android" in ua:
+        return "ទូរស័ព្ទ Android"
+    elif "iphone" in ua or "ipad" in ua:
+        return "ទូរស័ព្ទ iPhone/iPad"
+    elif "macintosh" in ua:
+        return "ម៉ាស៊ីន Mac"
+    elif "windows" in ua:
+        return "កុំព្យូទ័រ Windows"
+    elif "linux" in ua:
+        return "កុំព្យូទ័រ Linux"
+    else:
+        return "កម្មវិធីរុករកបណ្ដាញ (Web Browser)"
+
 class ChannelManager:
     def __init__(self):
         # ទម្រង់ទិន្នន័យ៖ { "បន្ទប់": {"users": {websocket_obj: username}, "speaker": None} }
@@ -35,6 +52,30 @@ class ChannelManager:
                     pass
 
     async def connect(self, channel: str, websocket: WebSocket, username: str):
+        # --- ពិនិត្យរកការតភ្ជាប់ចាស់ជាមួយ Username ដូចគ្នា (គ្រប់បន្ទប់ទាំងអស់) ---
+        new_ua = websocket.headers.get("user-agent", "")
+        new_device = get_device_info(new_ua)
+        
+        for ch in list(self.channels.keys()):
+            users_dict = self.channels[ch]["users"]
+            for ws_conn, name in list(users_dict.items()):
+                if name.lower() == username.lower() and ws_conn != websocket:
+                    # ផ្ញើសារប្រាប់ឧបករណ៍ចាស់
+                    try:
+                        await ws_conn.send_text(json.dumps({
+                            "type": "force_logout",
+                            "reason": "logged_in_elsewhere",
+                            "new_device": new_device,
+                            "message": f"គណនីរបស់អ្នកត្រូវបានចូលប្រើប្រាស់នៅលើឧបករណ៍ផ្សេងទៀត ({new_device})។"
+                        }))
+                        await ws_conn.close(code=4009)
+                    except Exception:
+                        pass
+                    # លុបចេញពីចង្កោមចាស់ភ្លាម
+                    if ws_conn in users_dict:
+                        del users_dict[ws_conn]
+                    await self.update_user_count(ch)
+
         if channel not in self.channels:
             self.channels[channel] = {
                 "users": {},
