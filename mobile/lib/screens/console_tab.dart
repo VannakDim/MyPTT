@@ -810,15 +810,6 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             'file_path': messageData['file_path'],
             'created_at': messageData['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
           });
-
-          // Add local message instantly
-          final msg = ChatMessage.fromJson(messageData, _currentUsername);
-          setState(() {
-            _chatMessages.insert(0, msg);
-          });
-          if (widget.selectedGroup != null) {
-            _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
-          }
         }
         return true;
       }
