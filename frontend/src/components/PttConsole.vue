@@ -514,7 +514,7 @@ const getAudioTitle = computed(() => {
 const unlockAudio = async () => {
   if (isAudioUnlocked.value) return;
   try {
-    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
     if (playCtx.state === 'suspended') await playCtx.resume();
     isAudioUnlocked.value = true;
   } catch (err) { console.error(err); }
@@ -789,16 +789,16 @@ const handleCallSignal = (data) => { if (data.status === "call_user") { callMode
 const acceptCall = () => { unlockAudio(); callMode.value = "connected"; callStatusText.value = "🟢 កំពុងនិយាយទូរស័ព្ទជាមួយ..."; ws.send(JSON.stringify({ action: "call_accepted", target: activeCallUser.value })); startCallAudio(); };
 const rejectCall = () => { callMode.value = "idle"; ws.send(JSON.stringify({ action: "call_rejected", target: activeCallUser.value })); };
 const hangupCall = () => { callMode.value = "idle"; ws.send(JSON.stringify({ action: "call_hungup", target: activeCallUser.value })); stopCallAudio(); };
-const startCallAudio = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); sourceNode = recordCtx.createMediaStreamSource(stream); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (callMode.value !== 'connected') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
+const startCallAudio = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 }); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (callMode.value !== 'connected') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode = recordCtx.createMediaStreamSource(stream); sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
 const stopCallAudio = () => { stopRecording(); };
 const startTalking = () => { if (callMode.value === 'connected') return; if (ws?.readyState === WebSocket.OPEN && pttState.value === 'idle') ws.send(JSON.stringify({ action: "ptt_start" })); };
 const stopTalking = () => { if (pttState.value === 'talking') { stopRecording(); ws.send(JSON.stringify({ action: "ptt_stop" })); } };
-const startRecording = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); sourceNode = recordCtx.createMediaStreamSource(stream); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (pttState.value !== 'talking') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
+const startRecording = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 }); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (pttState.value !== 'talking') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode = recordCtx.createMediaStreamSource(stream); sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
 const stopRecording = () => { if (processorNode) { processorNode.disconnect(); processorNode = null; } if (sourceNode) { sourceNode.disconnect(); sourceNode = null; } if (recordCtx && recordCtx.state !== 'closed') { recordCtx.close(); recordCtx = null; } };
 const playAudio = async (blob) => {
   if (isMuted.value) return;
   try {
-    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
     if (playCtx.state === 'suspended') await playCtx.resume();
     
     const arrayBuffer = await blob.arrayBuffer();
@@ -808,7 +808,7 @@ const playAudio = async (blob) => {
       float32[i] = int16[i] / 0x7FFF;
     }
     
-    const audioBuffer = playCtx.createBuffer(1, float32.length, 16000);
+    const audioBuffer = playCtx.createBuffer(1, float32.length, 8000);
     audioBuffer.getChannelData(0).set(float32);
     
     const source = playCtx.createBufferSource();
