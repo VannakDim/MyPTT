@@ -819,6 +819,59 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     return false;
   }
 
+  Future<void> _downloadFile(BuildContext context, String url, String fileName) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("កំពុងទាញយកឯកសារ $fileName..."), duration: const Duration(seconds: 2)),
+      );
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        throw Exception("Server status: ${response.statusCode}");
+      }
+
+      Directory? dir;
+      if (Platform.isAndroid) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          dir = await getExternalStorageDirectory();
+        } else {
+          dir = Directory('/storage/emulated/0/Download');
+        }
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      if (dir == null) {
+        throw Exception("មិនអាចរកឃើញទីតាំងរក្សាទុកឯកសារ");
+      }
+
+      final savePath = '${dir.path}/$fileName';
+      final file = File(savePath);
+      await file.writeAsBytes(response.bodyBytes);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("📥 ទាញយកជោគជ័យ! រក្សាទុកនៅ៖ $savePath"),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error downloading file: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("⚠️ ទាញយកបរាជ័យ៖ $e"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   void _toggleMute() {
     setState(() {
       _isMuted = !_isMuted;
@@ -1279,14 +1332,30 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             children: [
               const Icon(Icons.insert_drive_file_rounded, color: Color(0xFF38BDF8), size: 16),
               const SizedBox(width: 6),
-              Text(
-                msg.fileName ?? 'File',
-                style: TextStyle(
-                  color: Colors.white, 
-                  fontSize: widget.fontSize * 0.85 > 10 ? widget.fontSize * 0.85 : 10, 
-                  decoration: TextDecoration.underline,
+              Flexible(
+                child: Text(
+                  msg.fileName ?? 'File',
+                  style: TextStyle(
+                    color: Colors.white, 
+                    fontSize: widget.fontSize * 0.85 > 10 ? widget.fontSize * 0.85 : 10, 
+                    decoration: TextDecoration.underline,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (msg.filePath != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    final url = msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}';
+                    _downloadFile(context, url, msg.fileName ?? 'downloaded_file');
+                  },
+                  child: const MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Icon(Icons.download_for_offline_rounded, color: Color(0xFF10B981), size: 20),
+                  ),
+                ),
+              ],
             ],
           ),
           if (_shouldShowTime(index)) ...[
