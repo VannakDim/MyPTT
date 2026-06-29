@@ -136,17 +136,6 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   @override
-  void didUpdateWidget(covariant ConsoleTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.pttMode != widget.pttMode) {
-      if (_isPttActiveInAppNotifier.value) {
-        _handlePttStop();
-        _isPttActiveInAppNotifier.value = false;
-      }
-    }
-  }
-
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_positionInitialized) {
@@ -161,6 +150,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ConsoleTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.pttMode != widget.pttMode) {
+      if (_isPttActiveInAppNotifier.value) {
+        _handlePttStop();
+        _isPttActiveInAppNotifier.value = false;
+      }
+    }
     if (widget.selectedGroup?.id != oldWidget.selectedGroup?.id) {
       setState(() {
         _chatMessages.clear();
