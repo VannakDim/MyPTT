@@ -99,6 +99,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   ChatMessage? _replyingTo;
   bool _isSelectMode = false;
   final Set<int> _selectedMessageIds = {};
+  final Set<int> _selectedIndexes = {}; // index-based for real-time msgs without id
   
   final _chatScrollController = ScrollController();
   final _logsScrollController = ScrollController();
@@ -565,6 +566,14 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     final payload = <String, dynamic>{'text': text};
     if (_replyingTo?.id != null) {
       payload['reply_to_id'] = _replyingTo!.id;
+      // Embed full reply_to so the broadcast includes it for bubble rendering
+      payload['reply_to'] = {
+        'id': _replyingTo!.id,
+        'sender_name': _replyingTo!.sender,
+        'text': _replyingTo!.text,
+        'type': _replyingTo!.type,
+        'file_name': _replyingTo!.fileName,
+      };
     }
     _wsService.sendAction("chat_message", payload);
     _chatController.clear();
@@ -1939,7 +1948,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                         itemBuilder: (context, i) {
                           final msg = _chatMessages[i];
                           final showHeader = !msg.isMe && _shouldShowTime(i);
-                          final isSelected = _isSelectMode && msg.id != null && _selectedMessageIds.contains(msg.id);
+                          // The actual list index (reverse: true, so index 0 = newest)
+                          final isSelected = _isSelectMode && _selectedIndexes.contains(i);
 
                           // Bubble tap/longPress
                           void onLongPress() {
@@ -1949,15 +1959,17 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                           }
 
                           void onTap() {
-                            if (_isSelectMode && msg.id != null) {
+                            if (_isSelectMode) {
                               setState(() {
-                                if (_selectedMessageIds.contains(msg.id)) {
-                                  _selectedMessageIds.remove(msg.id);
-                                  if (_selectedMessageIds.isEmpty) {
+                                if (_selectedIndexes.contains(i)) {
+                                  _selectedIndexes.remove(i);
+                                  if (msg.id != null) _selectedMessageIds.remove(msg.id);
+                                  if (_selectedIndexes.isEmpty) {
                                     _isSelectMode = false;
                                   }
                                 } else {
-                                  _selectedMessageIds.add(msg.id!);
+                                  _selectedIndexes.add(i);
+                                  if (msg.id != null) _selectedMessageIds.add(msg.id!);
                                 }
                               });
                             }
@@ -2012,6 +2024,11 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                                   ? _buildFileShareWidget(msg, i)
                                   : _buildVoiceMessageWidget(msg, i);
 
+                          // In select mode, wrap bubble in AbsorbPointer so inner taps
+                          // (images, download buttons, play buttons) don't consume the event,
+                          // allowing the outer GestureDetector.onTap to toggle selection.
+                          final wrappedBubble = _isSelectMode ? AbsorbPointer(child: bubble) : bubble;
+
                           return GestureDetector(
                             onLongPress: onLongPress,
                             onTap: onTap,
@@ -2061,11 +2078,11 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                                           const SizedBox(height: 4),
                                         ],
                                         SwipeToReveal(
-                                          isMe: msg.isMe && msg.id != null && !_isSelectMode,
+                                          isMe: msg.isMe && !_isSelectMode,
                                           onDelete: () {
                                             _showDeleteDialog(msg);
                                           },
-                                          child: bubble,
+                                          child: wrappedBubble,
                                         ),
                                       ],
                                     ),
@@ -2417,11 +2434,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   subtitle: const Text("ជ្រើសសារដើម្បីលុបបន្ថែម", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                   onTap: () {
                     Navigator.pop(ctx);
+                    // Find the index of this message in the list
+                    final idx = _chatMessages.indexOf(msg);
                     setState(() {
                       _isSelectMode = true;
-                      if (msg.id != null) {
-                        _selectedMessageIds.add(msg.id!);
-                      }
+                      _selectedIndexes.add(idx < 0 ? 0 : idx);
+                      if (msg.id != null) _selectedMessageIds.add(msg.id!);
                     });
                   },
                 ),
@@ -2452,15 +2470,25 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   Future<void> _deleteSelectedMessages() async {
+    // Collect IDs of own messages that have a DB id
     final ids = _selectedMessageIds.where((id) {
       final msg = _chatMessages.firstWhere((m) => m.id == id, orElse: () => ChatMessage(sender: '', type: 'chat', isMe: false));
       return msg.isMe;
     }).toList();
 
-    if (ids.isEmpty) {
+    // Also collect index-selected own messages that might not have id yet
+    // (real-time messages) — just remove them locally
+    final indexesWithoutId = _selectedIndexes.where((idx) {
+      if (idx < 0 || idx >= _chatMessages.length) return false;
+      final m = _chatMessages[idx];
+      return m.isMe && m.id == null;
+    }).toList();
+
+    if (ids.isEmpty && indexesWithoutId.isEmpty) {
       setState(() {
         _isSelectMode = false;
         _selectedMessageIds.clear();
+        _selectedIndexes.clear();
       });
       return;
     }
@@ -2472,6 +2500,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         _chatMessages.removeWhere((m) => m.id != null && deletedIds.contains(m.id));
         _isSelectMode = false;
         _selectedMessageIds.clear();
+        _selectedIndexes.clear();
       });
       for (final id in deletedIds) {
         if (_wsService.isConnected) {
@@ -2504,6 +2533,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       setState(() {
         _isSelectMode = false;
         _selectedMessageIds.clear();
+        _selectedIndexes.clear();
       });
       if (mounted && successCount > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2571,17 +2601,18 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             onTap: () => setState(() {
               _isSelectMode = false;
               _selectedMessageIds.clear();
+              _selectedIndexes.clear();
             }),
             child: const Icon(Icons.close_rounded, color: Colors.white70),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
-              'បានជ្រើស ${_selectedMessageIds.length} សារ',
+              'បានជ្រើស ${_selectedIndexes.length} សារ',
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
             ),
           ),
-          if (_selectedMessageIds.isNotEmpty)
+          if (_selectedIndexes.isNotEmpty)
             GestureDetector(
               onTap: _deleteSelectedMessages,
               child: Container(

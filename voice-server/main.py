@@ -166,17 +166,34 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                 # --- ប្រព័ន្ធ Chat ធម្មតា ---
                 elif action == "chat_message":
                     chat_text = data.get("text")
-                    await manager.broadcast_text(channel, {
-                        "type": "chat",
-                        "sender": username,
-                        "text": chat_text
-                    })
-                    save_message_to_laravel({
+                    reply_to_id = data.get("reply_to_id")
+                    reply_to = data.get("reply_to")  # Full reply object from client
+
+                    # Save to Laravel synchronously to get the message ID
+                    save_payload = {
                         "channel_name": channel,
                         "sender_name": username,
                         "type": "chat",
-                        "text": chat_text
-                    })
+                        "text": chat_text,
+                    }
+                    if reply_to_id:
+                        save_payload["reply_to_id"] = reply_to_id
+
+                    saved_msg = await asyncio.to_thread(save_message_to_laravel_sync, save_payload)
+
+                    broadcast_payload = {
+                        "type": "chat",
+                        "id": saved_msg.get("id") if saved_msg else None,
+                        "sender": username,
+                        "text": chat_text,
+                        "created_at": saved_msg.get("created_at") if saved_msg else None,
+                    }
+                    if reply_to_id:
+                        broadcast_payload["reply_to_id"] = reply_to_id
+                    if reply_to:
+                        broadcast_payload["reply_to"] = reply_to
+
+                    await manager.broadcast_text(channel, broadcast_payload)
 
                 # --- មុខងារផ្ញើ File ---
                 elif action == "file_share":
