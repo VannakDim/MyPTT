@@ -55,6 +55,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
 
   // PTT State
   String _pttState = "idle"; // 'idle', 'talking', 'busy'
+  String _activePttSpeaker = "";
 
   // Draggable PTT Position
   late final ValueNotifier<Offset> _pttPositionNotifier = ValueNotifier<Offset>(const Offset(200, 350));
@@ -62,7 +63,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
 
   // State variables for in-app PTT Listener
   bool _isDraggingPtt = false;
-  bool _isPttActiveInApp = false;
+  final ValueNotifier<bool> _isPttActiveInAppNotifier = ValueNotifier<bool>(false);
+  Timer? _pttDelayTimer;
   // Touch start & initial button position for drag-threshold detection
   double _pttTouchStartX = 0;
   double _pttTouchStartY = 0;
@@ -85,6 +87,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   String _callMode = "idle"; // 'idle', 'incoming', 'calling', 'connected'
   String _callStatusText = "";
   String _activeCallUser = "";
+
+  // Audio Output State (during call)
+  String _callAudioOutput = 'earpiece'; // 'earpiece' | 'speaker' | 'bluetooth'
+  List<Map<String, String>> _availableOutputs = [];
+  int _callDurationSeconds = 0;
+  Timer? _callTimer;
 
   String get pttState => _pttState;
 
@@ -328,15 +336,24 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           setState(() {
             if (status == 'talking_granted') {
               _pttState = "talking";
+              _activePttSpeaker = "";
               _startMicStreaming();
             } else if (status == 'line_busy') {
               _pttState = "busy";
+              _activePttSpeaker = "";
+            } else if (status == 'busy') {
+              final speaker = frame['speaker'] ?? "User";
+              if (speaker != _currentUsername) {
+                _pttState = "busy";
+                _activePttSpeaker = speaker;
+              }
             } else {
               _pttState = "idle";
+              _activePttSpeaker = "";
               _audioService.stopRecording();
             }
           });
-          _broadcastPttStatus(status == 'talking_granted' ? 'talking' : (status == 'line_busy' ? 'busy' : 'idle'));
+          _broadcastPttStatus(_pttState);
         } else if (type == 'user_count') {
           final List list = frame['user_list'] ?? [];
           setState(() {
@@ -386,24 +403,28 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         _callMode = "incoming";
         _callStatusText = "🔔 មានការហៅចូលពី...";
         _activeCallUser = sender;
-        // Play ring tone + notification for incoming call
         _ringtoneService.startRinging();
         _notificationService.showCallNotification(callerName: sender);
       } else if (status == 'call_accepted') {
         _callMode = "connected";
         _callStatusText = "🟢 កំពុងនិយាយជាមួយ...";
+        _callAudioOutput = 'earpiece';
         _addLog("ប្រព័ន្ធ៖ ការហៅទូរស័ព្ទជាមួយ $sender ត្រូវបានភ្ជាប់។");
-        // Stop ringing when connected
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
         _audioService.startPlaybackStream();
         _startMicStreaming();
+        _audioService.setAudioOutput('earpiece');
+        _startCallTimer();
+        _loadAudioOutputs();
       } else if (status == 'call_rejected') {
         _callMode = "idle";
         _audioService.stopRecording();
         _audioService.stopPlaybackStream();
+        _audioService.setAudioOutput('earpiece');
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
+        _stopCallTimer();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("❌ $sender បានបដិសេធមិនទទួលទូរស័ព្ទទេ។")),
         );
@@ -411,8 +432,10 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         _callMode = "idle";
         _audioService.stopRecording();
         _audioService.stopPlaybackStream();
+        _audioService.setAudioOutput('earpiece');
         _ringtoneService.stopRinging();
         _notificationService.cancelCallNotification();
+        _stopCallTimer();
         _addLog("ប្រព័ន្ធ៖ $sender បានដាក់ទូរស័ព្ទចុះ។");
       }
     });
@@ -543,25 +566,106 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     setState(() {
       _callMode = "connected";
       _callStatusText = "🟢 កំពុងនិយាយជាមួយ...";
+      _callAudioOutput = 'earpiece';
     });
     _audioService.startPlaybackStream();
     _startMicStreaming();
+    _audioService.setAudioOutput('earpiece');
+    _startCallTimer();
+    _loadAudioOutputs();
   }
 
   void _rejectCall() {
     _wsService.sendAction("call_rejected", {'target': _activeCallUser});
+    _ringtoneService.stopRinging();
     setState(() {
       _callMode = "idle";
     });
+    _stopCallTimer();
   }
 
   void _hangupCall() {
     _wsService.sendAction("call_hungup", {'target': _activeCallUser});
     _audioService.stopRecording();
     _audioService.stopPlaybackStream();
+    _audioService.setAudioOutput('earpiece');
+    _stopCallTimer();
     setState(() {
       _callMode = "idle";
     });
+  }
+
+  void _startCallTimer() {
+    _callDurationSeconds = 0;
+    _callTimer?.cancel();
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _callDurationSeconds++);
+    });
+  }
+
+  void _stopCallTimer() {
+    _callTimer?.cancel();
+    _callTimer = null;
+    _callDurationSeconds = 0;
+  }
+
+  String get _callDurationText {
+    final m = (_callDurationSeconds ~/ 60).toString().padLeft(2, '0');
+    final s = (_callDurationSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _loadAudioOutputs() async {
+    final outputs = await _audioService.listAudioOutputs();
+    if (mounted) setState(() => _availableOutputs = outputs);
+  }
+
+  void _toggleSpeaker() {
+    final next = _callAudioOutput == 'speaker' ? 'earpiece' : 'speaker';
+    setState(() => _callAudioOutput = next);
+    _audioService.setAudioOutput(next);
+  }
+
+  void _showAudioOutputPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('ជ្រើស Audio Output', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ..._availableOutputs.map((o) {
+              final id   = o['id'] ?? '';
+              final name = o['name'] ?? '';
+              final type = o['type'] ?? '';
+              final isSelected = _callAudioOutput == type ||
+                (_callAudioOutput == 'bluetooth' && type == 'bluetooth');
+              IconData icon;
+              if (type == 'speaker')   icon = Icons.volume_up_rounded;
+              else if (type == 'bluetooth') icon = Icons.bluetooth_audio_rounded;
+              else                     icon = Icons.phone_in_talk_rounded;
+              return ListTile(
+                leading: Icon(icon, color: isSelected ? const Color(0xFF38BDF8) : Colors.white70),
+                title: Text(name, style: TextStyle(color: isSelected ? const Color(0xFF38BDF8) : Colors.white)),
+                trailing: isSelected ? const Icon(Icons.check, color: Color(0xFF38BDF8)) : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _callAudioOutput = type);
+                  _audioService.setAudioOutput(id.startsWith('bluetooth') ? 'bluetooth' : type);
+                },
+              );
+            }),
+          ],
+        ),
+      ),
+    );
   }
 
   bool _isUserOnline(String name) {
@@ -921,75 +1025,178 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   Widget _buildCallOverlay() {
+    final bool isConnected = _callMode == 'connected';
+    final bool isBluetooth = _callAudioOutput == 'bluetooth';
+    final bool isSpeaker   = _callAudioOutput == 'speaker';
+    final hasBluetooth = _availableOutputs.any((o) => o['type'] == 'bluetooth');
+
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.85),
-        child: Center(
-          child: Container(
-            width: 280,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: const Color(0xFF334155)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _callStatusText,
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF0F172A).withValues(alpha: 0.97),
+              const Color(0xFF1E293B).withValues(alpha: 0.97),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // ─── Avatar ───
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: const Color(0xFF334155),
+                child: Text(
+                  _activeCallUser.isNotEmpty ? _activeCallUser[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 40, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  _activeCallUser,
-                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 30),
+              ),
+              const SizedBox(height: 16),
+
+              // ─── Name ───
+              Text(
+                _activeCallUser,
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+
+              // ─── Status / Timer ───
+              Text(
+                isConnected ? _callDurationText : _callStatusText,
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
+              ),
+              const SizedBox(height: 40),
+
+              // ─── Controls row (only when connected) ───
+              if (isConnected) ...[
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (_callMode == "incoming") ...[
-                      ElevatedButton(
-                        onPressed: _acceptCall,
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2ECC71)),
-                        child: const Text("✔ ទទួល", style: TextStyle(color: Colors.white)),
-                      ),
-                      ElevatedButton(
-                        onPressed: _rejectCall,
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                        child: const Text("❌ បដិសេធ", style: TextStyle(color: Colors.white)),
-                      ),
-                    ] else ...[
-                      ElevatedButton.icon(
-                        onPressed: _hangupCall,
-                        icon: const Icon(Icons.call_end_rounded, color: Colors.white),
-                        label: const Text("🔴 ដាក់ចុះ", style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                    // Mute button
+                    _buildCallControl(
+                      icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                      label: _isMuted ? ' បិទ Mic' : 'Mic',
+                      active: _isMuted,
+                      activeColor: const Color(0xFFEF4444),
+                      onTap: _toggleMute,
+                    ),
+                    const SizedBox(width: 24),
+                    // Speaker button
+                    _buildCallControl(
+                      icon: isSpeaker ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                      label: 'ចរន្ត',
+                      active: isSpeaker,
+                      activeColor: const Color(0xFF38BDF8),
+                      onTap: _toggleSpeaker,
+                    ),
+                    if (hasBluetooth) ...[
+                      const SizedBox(width: 24),
+                      // Bluetooth button
+                      _buildCallControl(
+                        icon: Icons.bluetooth_audio_rounded,
+                        label: 'Bluetooth',
+                        active: isBluetooth,
+                        activeColor: const Color(0xFF818CF8),
+                        onTap: _showAudioOutputPicker,
                       ),
                     ],
                   ],
                 ),
+                const SizedBox(height: 36),
               ],
-            ),
+
+              // ─── Action buttons ───
+              if (_callMode == 'incoming') ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Reject
+                    _buildCallActionBtn(
+                      icon: Icons.call_end_rounded,
+                      color: const Color(0xFFEF4444),
+                      label: 'បដិសេធ',
+                      onTap: _rejectCall,
+                    ),
+                    const SizedBox(width: 60),
+                    // Accept
+                    _buildCallActionBtn(
+                      icon: Icons.call_rounded,
+                      color: const Color(0xFF22C55E),
+                      label: 'ទទួល',
+                      onTap: _acceptCall,
+                    ),
+                  ],
+                ),
+              ] else ...[
+                _buildCallActionBtn(
+                  icon: Icons.call_end_rounded,
+                  color: const Color(0xFFEF4444),
+                  label: 'ដាក់ចុះ',
+                  onTap: _hangupCall,
+                ),
+              ],
+            ],
           ),
         ),
       ),
     );
   }
 
+  Widget _buildCallControl({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: active ? activeColor.withValues(alpha: 0.2) : const Color(0xFF334155),
+            child: Icon(icon, color: active ? activeColor : Colors.white70, size: 26),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: TextStyle(color: active ? activeColor : Colors.white54, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallActionBtn({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: color,
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final bool hasChannel = widget.selectedGroup != null;
-
-    Color pttBtnColor = const Color(0xFF0EA5E9);
-    if (_pttState == "talking") {
-      pttBtnColor = const Color(0xFF2ECC71);
-    } else if (_pttState == "busy") {
-      pttBtnColor = const Color(0xFFEF4444);
-    } else if (_isPttActiveInApp) {
-      pttBtnColor = const Color(0xFFF59E0B);
-    }
 
     return Stack(
       children: [
@@ -1084,6 +1291,37 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   ],
                 ),
               ),
+
+              // PTT Status Banner
+              if (_pttState != "idle")
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                  color: _pttState == "talking"
+                      ? const Color(0xFF2ECC71).withOpacity(0.15)
+                      : const Color(0xFFEF4444).withOpacity(0.15),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _pttState == "talking" ? Icons.record_voice_over_rounded : Icons.mic_external_on_rounded,
+                        color: _pttState == "talking" ? const Color(0xFF2ECC71) : const Color(0xFFEF4444),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _pttState == "talking"
+                            ? "🎙️ អ្នកកំពុងនិយាយ..."
+                            : "🎙️ $_activePttSpeaker កំពុងនិយាយ...",
+                        style: TextStyle(
+                          color: _pttState == "talking" ? const Color(0xFF2ECC71) : const Color(0xFFEF4444),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Main Chat Area
                   Expanded(
@@ -1263,20 +1501,29 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 _pttTouchStartY = event.position.dy;
                 _pttInitialPosition = _pttPositionNotifier.value;
                 _isDraggingPtt = false;
-                if (mounted) setState(() { _isPttActiveInApp = true; });
-                _handlePttStart();
+                
+                _pttDelayTimer?.cancel();
+                if (_pttState != 'busy') {
+                  _pttDelayTimer = Timer(const Duration(milliseconds: 200), () {
+                    if (!_isDraggingPtt) {
+                      _isPttActiveInAppNotifier.value = true;
+                      _handlePttStart();
+                    }
+                  });
+                }
               },
               onPointerMove: (event) {
                 final double dx = event.position.dx - _pttTouchStartX;
                 final double dy = event.position.dy - _pttTouchStartY;
-                // Once movement exceeds threshold, switch to drag and stop PTT
+                // Once movement exceeds threshold, switch to drag and cancel PTT
                 if (!_isDraggingPtt &&
                     (dx * dx + dy * dy) > (_pttDragThreshold * _pttDragThreshold)) {
-                  if (_isPttActiveInApp) {
-                    _handlePttStop();
-                    if (mounted) setState(() { _isPttActiveInApp = false; });
-                  }
                   _isDraggingPtt = true;
+                  _pttDelayTimer?.cancel();
+                  if (_isPttActiveInAppNotifier.value) {
+                    _handlePttStop();
+                    _isPttActiveInAppNotifier.value = false;
+                  }
                 }
                 if (_isDraggingPtt) {
                   final size = MediaQuery.of(context).size;
@@ -1286,69 +1533,73 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 }
               },
               onPointerUp: (event) {
-                if (_isPttActiveInApp) {
+                _pttDelayTimer?.cancel();
+                if (_isPttActiveInAppNotifier.value) {
                   _handlePttStop();
                 }
                 _isDraggingPtt = false;
-                if (mounted) setState(() { _isPttActiveInApp = false; });
+                _isPttActiveInAppNotifier.value = false;
               },
               onPointerCancel: (event) {
-                if (_isPttActiveInApp) {
+                _pttDelayTimer?.cancel();
+                if (_isPttActiveInAppNotifier.value) {
                   _handlePttStop();
                 }
                 _isDraggingPtt = false;
-                if (mounted) setState(() { _isPttActiveInApp = false; });
+                _isPttActiveInAppNotifier.value = false;
               },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 80),
-                curve: Curves.easeOut,
-                transformAlignment: Alignment.center,
-                transform: Matrix4.diagonal3Values(
-                  _isPttActiveInApp ? 0.92 : 1.0,
-                  _isPttActiveInApp ? 0.92 : 1.0,
-                  1.0,
-                ),
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: pttBtnColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: pttBtnColor.withOpacity(0.5),
-                      blurRadius: 16,
-                      spreadRadius: 3,
-                    )
-                  ],
-                  border: Border.all(color: Colors.white.withOpacity(0.7), width: 3),
-                ),
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _pttState == "talking"
-                          ? "\ud83d\udde3\ufe0f"
-                          : _pttState == "busy"
-                              ? "\ud83d\uded1"
-                              : (_isPttActiveInApp ? "\ud83d\udde3\ufe0f" : "PTT"),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _isPttActiveInAppNotifier,
+                builder: (context, isPttActiveInApp, child) {
+                  Color localPttBtnColor = const Color(0xFF0EA5E9);
+                  if (_pttState == "busy") {
+                    localPttBtnColor = const Color(0xFFEF4444);
+                  }
+
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 80),
+                    curve: Curves.easeOut,
+                    transformAlignment: Alignment.center,
+                    transform: Matrix4.diagonal3Values(1.0, 1.0, 1.0),
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: localPttBtnColor,
+                      boxShadow: [
+                        BoxShadow(
+                          color: localPttBtnColor.withOpacity(0.5),
+                          blurRadius: 16,
+                          spreadRadius: 3,
+                        )
+                      ],
+                      border: Border.all(color: Colors.white.withOpacity(0.7), width: 3),
                     ),
-                    if (_pttState == "idle" && !_isPttActiveInApp)
-                      const Text(
-                        "PUSH",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 9,
-                          letterSpacing: 1,
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _pttState == "busy" ? "🛑" : "PTT",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                        if (_pttState != "busy")
+                          const Text(
+                            "PUSH",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 9,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -1435,6 +1686,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     _chatScrollController.dispose();
     _logsScrollController.dispose();
     _pttPositionNotifier.dispose();
+    _isPttActiveInAppNotifier.dispose();
+    _pttDelayTimer?.cancel();
     super.dispose();
   }
 }

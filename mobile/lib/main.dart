@@ -43,10 +43,10 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
   double _screenHeight = 640;
 
   // Draggable state variables
-  double _buttonX = 0;
-  double _buttonY = 0;
+  late final ValueNotifier<Offset> _overlayPositionNotifier = ValueNotifier<Offset>(const Offset(270, 500));
   bool _isDragging = false;
   bool _isPttActive = false;
+  Timer? _pttDelayTimer;
 
   // Initial touch & button position (for displacement-based drag detection)
   double _touchStartX = 0;
@@ -114,19 +114,21 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
             _lastOverlayY = savedY;
           });
         }
+        _overlayPositionNotifier.value = Offset(savedX, savedY);
         // Move overlay to saved position
         await FlutterOverlayWindow.moveOverlay(OverlayPosition(savedX, savedY));
       } else {
         // Default position: bottom-right corner
-        // We'll set after we know screen size, use a reasonable default for now
         _lastOverlayX = 270;
         _lastOverlayY = 500;
+        _overlayPositionNotifier.value = const Offset(270, 500);
         await FlutterOverlayWindow.moveOverlay(OverlayPosition(270, 500));
       }
     } catch (e) {
       debugPrint("Error loading position: $e");
       _lastOverlayX = 270;
       _lastOverlayY = 500;
+      _overlayPositionNotifier.value = const Offset(270, 500);
     }
   }
 
@@ -158,17 +160,23 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
     _initialButtonX = bx;
     _initialButtonY = by;
 
-    if (mounted) {
-      setState(() {
-        _buttonX = bx;
-        _buttonY = by;
-        _isDragging = false;
-        _isPttActive = true;
+    _overlayPositionNotifier.value = Offset(bx, by);
+    _isDragging = false;
+    _isPttActive = false;
+
+    _pttDelayTimer?.cancel();
+    if (_pttState != 'busy') {
+      _pttDelayTimer = Timer(const Duration(milliseconds: 200), () {
+        if (!_isDragging) {
+          if (mounted) {
+            setState(() {
+              _isPttActive = true;
+            });
+          }
+          _sendAction('ptt_start');
+        }
       });
     }
-
-    // Start PTT immediately
-    _sendAction('ptt_start');
 
     // Expand overlay to full screen so move events are received everywhere
     await FlutterOverlayWindow.resizeOverlay(-1, -1, false);
@@ -182,24 +190,25 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
 
     // Switch to drag mode once finger moves beyond threshold
     if (!_isDragging && (dx * dx + dy * dy) > (_dragThreshold * _dragThreshold)) {
+      _isDragging = true;
+      _pttDelayTimer?.cancel();
       if (_isPttActive) {
         _sendAction('ptt_stop');
+        setState(() {
+          _isPttActive = false;
+        });
       }
-      setState(() {
-        _isPttActive = false;
-        _isDragging = true;
-      });
     }
 
     if (_isDragging) {
-      setState(() {
-        _buttonX = (_initialButtonX + dx).clamp(0.0, _screenWidth - kButtonSize);
-        _buttonY = (_initialButtonY + dy).clamp(0.0, _screenHeight - kButtonSize);
-      });
+      final double newX = (_initialButtonX + dx).clamp(0.0, _screenWidth - kButtonSize);
+      final double newY = (_initialButtonY + dy).clamp(0.0, _screenHeight - kButtonSize);
+      _overlayPositionNotifier.value = Offset(newX, newY);
     }
   }
 
   Future<void> _onPointerUp(PointerUpEvent event) async {
+    _pttDelayTimer?.cancel();
     if (_isPttActive) {
       // Finger lifted without dragging — stop PTT
       _sendAction('ptt_stop');
@@ -208,8 +217,8 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
 
     if (_isDragging) {
       // Save new position
-      _lastOverlayX = _buttonX;
-      _lastOverlayY = _buttonY;
+      _lastOverlayX = _overlayPositionNotifier.value.dx;
+      _lastOverlayY = _overlayPositionNotifier.value.dy;
       _savePosition(_lastOverlayX, _lastOverlayY);
       if (mounted) setState(() { _isDragging = false; });
     }
@@ -222,6 +231,7 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
   }
 
   void _onPointerCancel(PointerCancelEvent event) {
+    _pttDelayTimer?.cancel();
     if (_isPttActive) {
       _sendAction('ptt_stop');
     }
@@ -244,9 +254,7 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
     _screenHeight = size.height;
 
     Color btnColor = const Color(0xFF0EA5E9);
-    if (_pttState == "talking") {
-      btnColor = const Color(0xFF2ECC71);
-    } else if (_pttState == "busy") {
+    if (_pttState == "busy") {
       btnColor = const Color(0xFFEF4444);
     }
 
@@ -270,14 +278,14 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            _isPttActive ? "🗣️" : _pttButtonText,
+            _pttState == "busy" ? "🛑" : "PTT",
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 18,
             ),
           ),
-          if (!_isPttActive && _pttButtonText == "PTT")
+          if (_pttState != "busy")
             const Text(
               "PUSH",
               style: TextStyle(
@@ -304,10 +312,15 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
             ),
           ),
           // PTT button follows finger
-          Positioned(
-            left: _buttonX,
-            top: _buttonY,
-            child: buttonWidget,
+          ValueListenableBuilder<Offset>(
+            valueListenable: _overlayPositionNotifier,
+            builder: (context, position, child) {
+              return Positioned(
+                left: position.dx,
+                top: position.dy,
+                child: buttonWidget,
+              );
+            },
           ),
         ],
       );
@@ -330,6 +343,8 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
     _statusRequestTimer?.cancel();
     IsolateNameServer.removePortNameMapping('overlay_port');
     _overlayReceivePort?.close();
+    _overlayPositionNotifier.dispose();
+    _pttDelayTimer?.cancel();
     super.dispose();
   }
 }

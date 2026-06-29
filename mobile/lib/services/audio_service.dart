@@ -18,6 +18,30 @@ class AudioService {
       print("[AudioService] Failed to set speakerphone: $e");
     }
   }
+
+  /// ប្តូរ Audio Output: 'speaker' | 'earpiece' | 'bluetooth'
+  Future<void> setAudioOutput(String port) async {
+    try {
+      await _channel.invokeMethod('setAudioOutput', {'port': port});
+      print("[AudioService] Set audio output to: $port");
+    } catch (e) {
+      print("[AudioService] Failed to set audio output: $e");
+    }
+  }
+
+  /// ទាញយកបញ្ជី Audio Output ដែលមាន (earpiece, speaker, bluetooth)
+  Future<List<Map<String, String>>> listAudioOutputs() async {
+    try {
+      final List<dynamic> raw = await _channel.invokeMethod('listAudioOutputs');
+      return raw.map((e) => Map<String, String>.from(e as Map)).toList();
+    } catch (e) {
+      print("[AudioService] Failed to list audio outputs: $e");
+      return [
+        {'id': 'earpiece', 'name': 'ស្មាហ្វូន', 'type': 'earpiece'},
+        {'id': 'speaker',  'name': 'លំโพ',     'type': 'speaker'},
+      ];
+    }
+  }
   FlutterSoundRecorder? _recorder;
   FlutterSoundPlayer? _urlPlayer;
   bool _isRecorderInitialized = false;
@@ -85,24 +109,40 @@ class AudioService {
   void _onFeed(int remainingFrames) async {
     final int framesToFeed = remainingFrames > 0 ? remainingFrames : 800;
     
-    // If buffering or queue has fewer samples than requested, feed silence (zeros)
-    if (_isBuffering || _audioQueue.length < framesToFeed) {
-      _isBuffering = true;
+    if (_isBuffering) {
+      // Jitter buffer threshold: wait until we accumulate 2400 samples (150ms of audio)
+      if (_audioQueue.length >= 2400) {
+        _isBuffering = false;
+      } else {
+        try {
+          await FlutterPcmSound.feed(PcmArrayInt16.fromList(List.filled(framesToFeed, 0)));
+        } catch (e) {
+          // Ignore feed errors
+        }
+        return;
+      }
+    }
+
+    if (_audioQueue.length >= framesToFeed) {
+      final List<int> chunk = _audioQueue.sublist(0, framesToFeed);
+      _audioQueue.removeRange(0, framesToFeed);
       try {
-        await FlutterPcmSound.feed(PcmArrayInt16.fromList(List.filled(framesToFeed, 0)));
+        await FlutterPcmSound.feed(PcmArrayInt16.fromList(chunk));
       } catch (e) {
         // Ignore feed errors
       }
-      return;
-    }
-
-    final List<int> chunk = _audioQueue.sublist(0, framesToFeed);
-    _audioQueue.removeRange(0, framesToFeed);
-    
-    try {
-      await FlutterPcmSound.feed(PcmArrayInt16.fromList(chunk));
-    } catch (e) {
-      // Ignore feed errors
+    } else {
+      // Buffer underrun: feed remaining samples padded with silence, and re-enter buffering state
+      final List<int> chunk = List<int>.from(_audioQueue);
+      final int silenceNeeded = framesToFeed - chunk.length;
+      chunk.addAll(List.filled(silenceNeeded, 0));
+      _audioQueue.clear();
+      _isBuffering = true;
+      try {
+        await FlutterPcmSound.feed(PcmArrayInt16.fromList(chunk));
+      } catch (e) {
+        // Ignore feed errors
+      }
     }
   }
 
@@ -185,10 +225,12 @@ class AudioService {
   // ៤. ចាប់ផ្ដើមការចាក់សំឡេងពី Stream (Start Playback Stream)
   Future<void> startPlaybackStream() async {
     if (!_isPlayerInitialized) return;
+    // Reset buffering state so we wait for real audio samples before playing
+    _isBuffering = true;
     _isPlaying = true;
+    _audioQueue.clear();
     try {
       await FlutterPcmSound.play();
-      await _setSpeakerphone(true);
     } catch (e) {
       print("[AudioService] Error starting playback stream: $e");
     }
@@ -207,23 +249,16 @@ class AudioService {
       
       _audioQueue.addAll(int16List);
 
-      // Latency mitigation: if queue builds up more than 8000 samples (500ms),
+      // Latency mitigation: if queue builds up more than 6400 samples (400ms),
       // discard the oldest samples to catch up to real-time.
-      if (_audioQueue.length > 8000) {
-        _audioQueue.removeRange(0, _audioQueue.length - 4000);
-      }
-
-      // Exit buffering state if we have accumulated enough samples (e.g. 1600 samples = 100ms)
-      if (_isBuffering && _audioQueue.length >= 1600) {
-        _isBuffering = false;
-        // Make sure speakerphone is still forced on during state changes
-        _setSpeakerphone(true).catchError((_) {});
+      if (_audioQueue.length > 6400) {
+        _audioQueue.removeRange(0, _audioQueue.length - 2400);
       }
 
       // Start the player once if it's not already playing
-      if (!_isPlaying && _audioQueue.length >= 1600) {
+      if (!_isPlaying) {
         _isPlaying = true;
-        _isBuffering = false;
+        _isBuffering = true; // Start in buffering state to accumulate initial samples
         await startPlaybackStream();
       }
     } catch (e) {
