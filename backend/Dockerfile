@@ -29,7 +29,7 @@ WORKDIR /var/www
 
 # Install Composer dependencies (optimization step)
 COPY composer.json composer.lock ./
-RUN composer install --no-scripts --no-autoloader
+RUN composer install --no-scripts --no-autoloader --prefer-dist || composer install --no-scripts --no-autoloader --prefer-source
 
 COPY . .
 
