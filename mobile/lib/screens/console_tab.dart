@@ -18,6 +18,7 @@ import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
 import '../services/chat_cache_service.dart';
 import 'login_screen.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ConsoleTab extends StatefulWidget {
   final String userToken;
@@ -545,7 +546,92 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     _chatController.clear();
   }
 
-  Future<void> _sendFileShare() async {
+  Future<void> _showSendFileOptions() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "ផ្ញើឯកសារ ឬរូបភាព",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_rounded, color: Color(0xFF38BDF8)),
+                  title: const Text("ប្រើប្រាស់កាមេរ៉ា (Camera)", style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromCamera();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_rounded, color: Color(0xFF2ECC71)),
+                  title: const Text("ជ្រើសរើសរូបភាព (Gallery)", style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromGallery();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.insert_drive_file_rounded, color: Color(0xFFF1C40F)),
+                  title: const Text("ជ្រើសរើសឯកសារ (Files)", style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromFile();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickFromCamera() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+      final name = image.name;
+      final extension = image.path.split('.').last.toLowerCase();
+      _processAndSendFile(bytes, name, extension);
+    } catch (e) {
+      debugPrint("Error picking from camera: $e");
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+      final name = image.name;
+      final extension = image.path.split('.').last.toLowerCase();
+      _processAndSendFile(bytes, name, extension);
+    } catch (e) {
+      debugPrint("Error picking from gallery: $e");
+    }
+  }
+
+  Future<void> _pickFromFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result == null || result.files.isEmpty) return;
 
@@ -554,6 +640,10 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     Uint8List bytes = await file.readAsBytes();
     String name = result.files.first.name;
     String extension = (result.files.first.extension ?? 'bin').toLowerCase();
+    _processAndSendFile(bytes, name, extension);
+  }
+
+  Future<void> _processAndSendFile(Uint8List bytes, String name, String extension) async {
     String fileType = 'application/octet-stream';
 
     final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
@@ -1121,7 +1211,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               const Icon(Icons.volume_up_rounded, color: Colors.white70, size: 16),
               const SizedBox(width: 6),
               Text(
-                "សារសំឡេង PTT",
+                "សារសំឡេង",
                 style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: widget.fontSize, fontWeight: FontWeight.w500),
               ),
             ],
@@ -1562,7 +1652,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.attach_file_rounded, color: Color(0xFF38BDF8)),
-                        onPressed: _sendFileShare,
+                        onPressed: _showSendFileOptions,
                       ),
                       Expanded(
                         child: Container(
