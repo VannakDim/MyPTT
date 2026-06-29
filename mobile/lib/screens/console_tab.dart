@@ -23,6 +23,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:open_filex/open_filex.dart';
 import 'dart:math';
 
 class ConsoleTab extends StatefulWidget {
@@ -90,6 +91,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   // Logs and Chat State
   final List<String> _logs = [];
   final List<ChatMessage> _chatMessages = [];
+  final Map<String, String> _localFilePaths = {};
   String? _playingVoiceUrl;
   final _chatController = TextEditingController();
   
@@ -238,6 +240,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         _hasMoreMessages = cached.length >= 15;
       });
       _scrollToBottomChat();
+      _checkDownloadedFiles();
     }
 
     try {
@@ -253,6 +256,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       }
       // ២. រក្សាទុកសារដែលទើបតែទាញយកបានថ្មីៗ ចូលទៅក្នុង cache
       _cacheService.cacheMessages(groupId, messages);
+      _checkDownloadedFiles();
     } catch (e) {
       debugPrint("Failed loading group messages: $e");
     }
@@ -288,6 +292,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       }
       if (moreMessages.isNotEmpty) {
         _cacheService.cacheMessages(widget.selectedGroup!.id, moreMessages);
+        _checkDownloadedFiles();
       }
     } catch (e) {
       debugPrint("Error loading more messages: $e");
@@ -820,7 +825,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     return false;
   }
 
-  Future<void> _downloadFile(BuildContext context, String url, String fileName) async {
+  Future<void> _downloadFile(BuildContext context, String url, String fileName, {String? msgId}) async {
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("កំពុងទាញយកឯកសារ $fileName..."), duration: const Duration(seconds: 2)),
@@ -851,6 +856,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       final file = File(savePath);
       await file.writeAsBytes(response.bodyBytes);
 
+      if (msgId != null && mounted) {
+        setState(() {
+          _localFilePaths[msgId] = savePath;
+        });
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -870,6 +881,46 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           ),
         );
       }
+    }
+  }
+
+  Future<String?> _getLocalFilePath(String fileName) async {
+    try {
+      Directory? dir;
+      if (Platform.isAndroid) {
+        final downloadDir = Directory('/storage/emulated/0/Download');
+        final fileInDownload = File('${downloadDir.path}/$fileName');
+        if (await fileInDownload.exists()) {
+          return fileInDownload.path;
+        }
+        dir = await getExternalStorageDirectory();
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+      if (dir != null) {
+        final fileInAppDir = File('${dir.path}/$fileName');
+        if (await fileInAppDir.exists()) {
+          return fileInAppDir.path;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _checkDownloadedFiles() async {
+    final Map<String, String> foundPaths = {};
+    for (final msg in _chatMessages) {
+      if (msg.type == 'file' && msg.fileName != null) {
+        final path = await _getLocalFilePath(msg.fileName!);
+        if (path != null) {
+          foundPaths[msg.id.toString()] = path;
+        }
+      }
+    }
+    if (mounted && foundPaths.isNotEmpty) {
+      setState(() {
+        _localFilePaths.addAll(foundPaths);
+      });
     }
   }
 
@@ -1346,15 +1397,47 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               ),
               if (msg.filePath != null) ...[
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    final url = msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}';
-                    _downloadFile(context, url, msg.fileName ?? 'downloaded_file');
-                  },
-                  child: const MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: Icon(Icons.download_for_offline_rounded, color: Color(0xFF10B981), size: 20),
-                  ),
+                Builder(
+                  builder: (context) {
+                    final msgIdStr = msg.id.toString();
+                    final localPath = _localFilePaths[msgIdStr];
+                    final isDownloaded = localPath != null;
+
+                    if (isDownloaded) {
+                      return GestureDetector(
+                        onTap: () async {
+                          try {
+                            final openRes = await OpenFilex.open(localPath);
+                            if (openRes.type != ResultType.done && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("⚠️ មិនអាចបើកឯកសារ៖ ${openRes.message}"),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            debugPrint("Error opening file: $e");
+                          }
+                        },
+                        child: const MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Icon(Icons.open_in_new_rounded, color: Color(0xFF38BDF8), size: 20),
+                        ),
+                      );
+                    } else {
+                      return GestureDetector(
+                        onTap: () {
+                          final url = msg.filePath!.startsWith('http') ? msg.filePath! : '${ApiService.baseUrl}${msg.filePath}';
+                          _downloadFile(context, url, msg.fileName ?? 'downloaded_file', msgId: msgIdStr);
+                        },
+                        child: const MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Icon(Icons.download_for_offline_rounded, color: Color(0xFF10B981), size: 20),
+                        ),
+                      );
+                    }
+                  }
                 ),
               ],
             ],
