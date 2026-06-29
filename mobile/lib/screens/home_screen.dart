@@ -29,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _showLogs = false;
   bool _showPttButton = true;
   double _chatFontSize = 13.0;
+  String _pttMode = "push"; // 'push' or 'toggle'
   String _currentView = 'chat'; // 'chat' or 'users'
   final GlobalKey<ConsoleTabState> _consoleKey = GlobalKey<ConsoleTabState>();
 
@@ -62,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _avatarStr = prefs.getString('ptt_avatar') ?? '';
       _showPttButton = prefs.getBool('ptt_show_button') ?? true;
       _chatFontSize = prefs.getDouble('ptt_chat_font_size') ?? 13.0;
+      _pttMode = prefs.getString('ptt_press_mode') ?? 'push';
     });
     if (_token != null) {
       _fetchGroups();
@@ -73,6 +75,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await prefs.setBool('ptt_show_button', val);
     setState(() {
       _showPttButton = val;
+    });
+  }
+
+  Future<void> _savePttModeConfig(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ptt_press_mode', mode);
+    setState(() {
+      _pttMode = mode;
     });
   }
 
@@ -407,6 +417,81 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _savePttButtonConfig(val);
               },
             ),
+            if (_showPttButton)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "របៀបចុចនិយាយ (PTT Mode)",
+                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _savePttModeConfig("push"),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _pttMode == "push"
+                                    ? const Color(0xFF38BDF8)
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: _pttMode == "push"
+                                      ? const Color(0xFF38BDF8)
+                                      : const Color(0xFF334155),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                "Push",
+                                style: TextStyle(
+                                  color: _pttMode == "push" ? Colors.black : Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _savePttModeConfig("toggle"),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _pttMode == "toggle"
+                                    ? const Color(0xFF38BDF8)
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: _pttMode == "toggle"
+                                      ? const Color(0xFF38BDF8)
+                                      : const Color(0xFF334155),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                "Toggle",
+                                style: TextStyle(
+                                  color: _pttMode == "toggle" ? Colors.black : Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
 
             ListTile(
               leading: const Icon(Icons.format_size_rounded, color: Color(0xFFF1C40F), size: 20),
@@ -555,6 +640,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       myGroups: _myGroups,
       showLogs: _showLogs,
       showPttButton: _showPttButton,
+      pttMode: _pttMode,
       fontSize: _chatFontSize,
     );
   }
