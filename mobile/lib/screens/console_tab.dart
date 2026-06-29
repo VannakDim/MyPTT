@@ -708,12 +708,13 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         "file_data": fullBase64Val,
       };
 
-      // Set up chunked progressive request
+      // Set up progressive request with explicit content length
       final request = http.StreamedRequest('POST', url);
       request.headers.addAll(headers);
 
       final jsonBytes = utf8.encode(jsonEncode(body));
       final totalBytes = jsonBytes.length;
+      request.contentLength = totalBytes;
 
       int offset = 0;
       final chunkSize = 64 * 1024; // 64KB chunks
