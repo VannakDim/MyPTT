@@ -1597,9 +1597,26 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              Text(
-                "${(_uploadProgress * 100).toStringAsFixed(1)}%",
-                style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Text(
+                    "${(_uploadProgress * 100).toStringAsFixed(1)}%",
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isUploading = false;
+                      });
+                    },
+                    child: const Icon(
+                      Icons.cancel_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
