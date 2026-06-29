@@ -48,7 +48,7 @@ WORKDIR /var/www
 
 # Copy Laravel Backend
 COPY backend/ /var/www
-RUN composer install --no-dev --optimize-autoloader --no-scripts --prefer-dist || composer install --no-dev --optimize-autoloader --no-scripts --prefer-source
+RUN composer install --no-dev --optimize-autoloader --no-scripts --prefer-dist || (sleep 3 && composer install --no-dev --optimize-autoloader --no-scripts --prefer-dist)
 
 # Set Permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
