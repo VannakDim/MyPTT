@@ -1,5 +1,6 @@
 from fastapi import WebSocket
 import json
+import asyncio
 
 class ChannelManager:
     def __init__(self):
@@ -88,37 +89,49 @@ class ChannelManager:
                 if is_ptt_speaker and "audio_buffer" in self.channels[channel]:
                     self.channels[channel]["audio_buffer"].extend(audio_bytes)
 
+                async def safe_send(ws):
+                    try:
+                        await ws.send_bytes(audio_bytes)
+                    except Exception:
+                        pass
+
                 for user_ws in self.channels[channel]["users"].keys():
                     if user_ws != sender_ws:
-                        try:
-                            await user_ws.send_bytes(audio_bytes)
-                        except Exception:
-                            pass
+                        asyncio.create_task(safe_send(user_ws))
 
     async def broadcast_text(self, channel: str, data_dict: dict):
         if channel in self.channels:
-            for user_ws in self.channels[channel]["users"].keys():
+            async def safe_send(ws):
                 try:
-                    await user_ws.send_text(json.dumps(data_dict))
+                    await ws.send_text(json.dumps(data_dict))
                 except Exception:
                     pass
+
+            for user_ws in self.channels[channel]["users"].keys():
+                asyncio.create_task(safe_send(user_ws))
 
     async def send_audio_to_user(self, channel: str, target_username: str, audio_bytes: bytes):
         """ ផ្ញើកញ្ចប់សំឡេងចំគោលដៅទៅកាន់ User ម្នាក់ (private call audio – មិន broadcast) """
         if channel in self.channels:
+            async def safe_send(ws):
+                try:
+                    await ws.send_bytes(audio_bytes)
+                except Exception:
+                    pass
+
             for user_ws, name in self.channels[channel]["users"].items():
                 if str(name).lower() == str(target_username).lower():
-                    try:
-                        await user_ws.send_bytes(audio_bytes)
-                    except Exception:
-                        pass
+                    asyncio.create_task(safe_send(user_ws))
 
     async def send_to_user(self, channel: str, target_username: str, data_dict: dict):
         """ ផ្ញើសារចំគោលដៅទៅកាន់ User ម្នាក់ជាក់លាក់ (មិនខ្វល់រឿងអក្សរធំ-តូច) """
         if channel in self.channels:
+            async def safe_send(ws):
+                try:
+                    await ws.send_text(json.dumps(data_dict))
+                except Exception:
+                    pass
+
             for user_ws, name in self.channels[channel]["users"].items():
                 if str(name).lower() == str(target_username).lower():
-                    try:
-                        await user_ws.send_text(json.dumps(data_dict))
-                    except Exception:
-                        pass
+                    asyncio.create_task(safe_send(user_ws))
