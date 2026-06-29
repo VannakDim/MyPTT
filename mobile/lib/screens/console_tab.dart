@@ -1503,7 +1503,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 _isDraggingPtt = false;
                 
                 _pttDelayTimer?.cancel();
-                if (_pttState != 'busy') {
+                if (_pttState != 'busy' && _callMode == 'idle') {
                   _pttDelayTimer = Timer(const Duration(milliseconds: 100), () {
                     if (!_isDraggingPtt) {
                       _isPttActiveInAppNotifier.value = true;
@@ -1552,7 +1552,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 valueListenable: _isPttActiveInAppNotifier,
                 builder: (context, isPttActiveInApp, child) {
                   Color localPttBtnColor = const Color(0xFF0EA5E9);
-                  if (_pttState == "busy") {
+                  if (_callMode != 'idle') {
+                    localPttBtnColor = Colors.grey;
+                  } else if (_pttState == "busy") {
                     localPttBtnColor = const Color(0xFFEF4444);
                   }
 
@@ -1580,14 +1582,14 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _pttState == "busy" ? "🛑" : "PTT",
+                          _callMode != 'idle' ? "📞" : (_pttState == "busy" ? "🛑" : "PTT"),
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
                           ),
                         ),
-                        if (_pttState != "busy")
+                        if (_callMode == 'idle' && _pttState != "busy")
                           const Text(
                             "PUSH",
                             style: TextStyle(

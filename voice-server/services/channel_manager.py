@@ -6,6 +6,18 @@ class ChannelManager:
     def __init__(self):
         # ទម្រង់ទិន្នន័យ៖ { "បន្ទប់": {"users": {websocket_obj: username}, "speaker": None} }
         self.channels = {}
+        self.active_calls = set()
+
+    def register_call(self, user1: str, user2: str):
+        self.active_calls.add(user1.lower())
+        self.active_calls.add(user2.lower())
+
+    def unregister_call(self, user1: str, user2: str):
+        self.active_calls.discard(user1.lower())
+        self.active_calls.discard(user2.lower())
+
+    def is_user_in_call(self, username: str) -> bool:
+        return username.lower() in self.active_calls
 
     async def update_user_count(self, channel: str):
         """ ផ្ញើចំនួនសមាជិកបច្ចុប្បន្ន និងបញ្ជីឈ្មោះទៅកាន់គ្រប់ Client ទាំងអស់ក្នុងបន្ទប់ """
@@ -37,6 +49,10 @@ class ChannelManager:
         """ 🟢 មុខងារកែសម្រួលថ្មី៖ ដោះស្រាយបញ្ហា Logout ហើយចំនួនសមាជិកមិនព្រមថយចុះ """
         res = None
         if channel in self.channels:
+            username = self.channels[channel]["users"].get(websocket)
+            if username:
+                self.active_calls.discard(username.lower())
+
             # ១. លុប WebSocket client ដែលដាច់ការភ្ជាប់ចេញពីបន្ទប់
             if websocket in self.channels[channel]["users"]:
                 del self.channels[channel]["users"][websocket]
@@ -95,8 +111,8 @@ class ChannelManager:
                     except Exception:
                         pass
 
-                for user_ws in self.channels[channel]["users"].keys():
-                    if user_ws != sender_ws:
+                for user_ws, name in self.channels[channel]["users"].items():
+                    if user_ws != sender_ws and not self.is_user_in_call(name):
                         asyncio.create_task(safe_send(user_ws))
 
     async def broadcast_text(self, channel: str, data_dict: dict):

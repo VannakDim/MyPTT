@@ -203,6 +203,11 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                 # --- ប្រព័ន្ធ Call (WebRTC Signaling) ---
                 elif action in ["call_user", "call_accepted", "call_rejected", "call_hungup"]:
                     target = data.get("target")
+                    if action == "call_accepted":
+                        manager.register_call(username, target)
+                    elif action in ["call_rejected", "call_hungup"]:
+                        manager.unregister_call(username, target)
+
                     await manager.send_to_user(channel, target, {
                         "type": "call_signal",
                         "status": action,
