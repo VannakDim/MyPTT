@@ -16,6 +16,7 @@ import '../services/image_service.dart';
 import '../widgets/image_viewer.dart';
 import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
+import '../services/chat_cache_service.dart';
 
 class ConsoleTab extends StatefulWidget {
   final String userToken;
@@ -44,6 +45,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   final _audioService = AudioService();
   final _notificationService = NotificationService();
   final _ringtoneService = RingtoneService();
+  final _cacheService = ChatCacheService();
   WebRTCService? _webrtcService;
   final List<Color> _presetColors = [
     Colors.blue, Colors.green, Colors.orange, Colors.red, Colors.purple, Colors.teal, Colors.amber, Colors.blueGrey
@@ -207,6 +209,17 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   bool _hasMoreMessages = true;
 
   Future<void> _fetchGroupMessages(int groupId) async {
+    // ១. ព្យាយាមទាញយកសារចេញពី Local Cache មុនដើម្បីបង្ហាញជូនអ្នកប្រើប្រាស់ភ្លាមៗ
+    final cached = await _cacheService.getCachedMessages(groupId, _currentUsername);
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _chatMessages.clear();
+        _chatMessages.addAll(cached);
+        _hasMoreMessages = cached.length >= 15;
+      });
+      _scrollToBottomChat();
+    }
+
     try {
       final messages = await ApiService.getGroupMessages(groupId);
       if (mounted) {
@@ -216,14 +229,17 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           _isLoadingMore = false;
           _hasMoreMessages = messages.length >= 15;
         });
+        _scrollToBottomChat();
       }
+      // ២. រក្សាទុកសារដែលទើបតែទាញយកបានថ្មីៗ ចូលទៅក្នុង cache
+      _cacheService.cacheMessages(groupId, messages);
     } catch (e) {
       debugPrint("Failed loading group messages: $e");
     }
   }
 
   void _onChatScroll() {
-    if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 100) {
+    if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 400) {
       _loadMoreMessages();
     }
   }
@@ -249,6 +265,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             _hasMoreMessages = moreMessages.length >= 15;
           }
         });
+      }
+      if (moreMessages.isNotEmpty) {
+        _cacheService.cacheMessages(widget.selectedGroup!.id, moreMessages);
       }
     } catch (e) {
       debugPrint("Error loading more messages: $e");
@@ -314,6 +333,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           setState(() {
             _chatMessages.insert(0, msg);
           });
+          if (widget.selectedGroup != null) {
+            _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
+          }
           // Notify only for messages from others
           if (!msg.isMe) {
             _ringtoneService.playMessageBeep();
@@ -330,6 +352,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             setState(() {
               _chatMessages.removeWhere((m) => m.id == msgId);
             });
+            if (widget.selectedGroup != null) {
+              _cacheService.cacheMessages(widget.selectedGroup!.id, _chatMessages);
+            }
           }
         } else if (type == 'ptt_status') {
           if (_callMode != 'idle') return; // Skip PTT updates during calls!

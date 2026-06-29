@@ -55,4 +55,18 @@ class ChatMessage {
       createdAt: timeVal,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'sender': sender,
+      'type': type,
+      'text': text,
+      'file_name': fileName,
+      'file_type': fileType,
+      'file_data': fileData,
+      'file_path': filePath,
+      'created_at': createdAt?.toIso8601String(),
+    };
+  }
 }
