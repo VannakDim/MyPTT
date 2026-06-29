@@ -24,6 +24,7 @@ class ChannelManager:
         # ទម្រង់ទិន្នន័យ៖ { "បន្ទប់": {"users": {websocket_obj: username}, "speaker": None} }
         self.channels = {}
         self.active_calls = set()
+        self.ws_to_user_id = {} # WebSocket -> int (User ID)
 
     def register_call(self, user1: str, user2: str):
         self.active_calls.add(user1.lower())
@@ -51,31 +52,32 @@ class ChannelManager:
                 except Exception:
                     pass
 
-    async def connect(self, channel: str, websocket: WebSocket, username: str):
-        # --- ពិនិត្យរកការតភ្ជាប់ចាស់ជាមួយ Username ដូចគ្នា (គ្រប់បន្ទប់ទាំងអស់) ---
+    async def connect(self, channel: str, websocket: WebSocket, username: str, user_id: int):
+        # --- ពិនិត្យរកការតភ្ជាប់ចាស់ជាមួយ User ID ដូចគ្នា (គ្រប់បន្ទប់ទាំងអស់) ---
         new_ua = websocket.headers.get("user-agent", "")
         new_device = get_device_info(new_ua)
         
-        for ch in list(self.channels.keys()):
-            users_dict = self.channels[ch]["users"]
-            for ws_conn, name in list(users_dict.items()):
-                if name.lower() == username.lower() and ws_conn != websocket:
-                    # ផ្ញើសារប្រាប់ឧបករណ៍ចាស់
-                    try:
-                        await ws_conn.send_text(json.dumps({
-                            "type": "force_logout",
-                            "reason": "logged_in_elsewhere",
-                            "new_device": new_device,
-                            "message": f"គណនីរបស់អ្នកត្រូវបានចូលប្រើប្រាស់នៅលើឧបករណ៍ផ្សេងទៀត ({new_device})។"
-                        }))
-                        await ws_conn.close(code=4009)
-                    except Exception:
-                        pass
-                    # លុបចេញពីចង្កោមចាស់ភ្លាម
-                    if ws_conn in users_dict:
-                        del users_dict[ws_conn]
-                    await self.update_user_count(ch)
+        for ws_conn, uid in list(self.ws_to_user_id.items()):
+            if uid == user_id and ws_conn != websocket:
+                # ផ្ញើសារប្រាប់ឧបករណ៍ចាស់
+                try:
+                    await ws_conn.send_text(json.dumps({
+                        "type": "force_logout",
+                        "reason": "logged_in_elsewhere",
+                        "new_device": new_device,
+                        "message": f"គណនីរបស់អ្នកត្រូវបានចូលប្រើប្រាស់នៅលើឧបករណ៍ផ្សេងទៀត ({new_device})។"
+                    }))
+                    await ws_conn.close(code=4009)
+                except Exception:
+                    pass
+                # លុបចេញពីចង្កោមចាស់ភ្លាម
+                self.ws_to_user_id.pop(ws_conn, None)
+                for ch in list(self.channels.keys()):
+                    if ws_conn in self.channels[ch]["users"]:
+                        del self.channels[ch]["users"][ws_conn]
+                        await self.update_user_count(ch)
 
+        self.ws_to_user_id[websocket] = user_id
         if channel not in self.channels:
             self.channels[channel] = {
                 "users": {},
@@ -88,6 +90,7 @@ class ChannelManager:
 
     async def disconnect(self, channel: str, websocket: WebSocket) -> dict:
         """ 🟢 មុខងារកែសម្រួលថ្មី៖ ដោះស្រាយបញ្ហា Logout ហើយចំនួនសមាជិកមិនព្រមថយចុះ """
+        self.ws_to_user_id.pop(websocket, None)
         res = None
         if channel in self.channels:
             username = self.channels[channel]["users"].get(websocket)

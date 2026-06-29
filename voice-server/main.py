@@ -113,11 +113,11 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
         await websocket.close(code=4008)
         return
         
-    # ចាប់យកឈ្មោះពិតពី Token (សសរស្ដម្ភ name)
     username = user_info.get("name", "User")
+    user_id = user_info.get("id")
 
     await websocket.accept()
-    await manager.connect(channel, websocket, username)
+    await manager.connect(channel, websocket, username, user_id)
     await manager.broadcast_text(channel, {"type": "system", "message": f"🔔 {username} បានចូលក្នុងបន្ទប់"})
 
     try:
