@@ -138,6 +138,11 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     if await manager.request_ptt(channel, websocket, username):
                         await websocket.send_text(json.dumps({"type": "ptt_status", "status": "talking_granted"}))
                         await manager.broadcast_text(channel, {"type": "system", "message": f"🎙️ {username} កំពុងនិយាយ..."})
+                        await manager.broadcast_text(channel, {
+                            "type": "ptt_status",
+                            "status": "busy",
+                            "speaker": username
+                        })
                     else:
                         await websocket.send_text(json.dumps({"type": "ptt_status", "status": "line_busy"}))
                         
@@ -146,6 +151,10 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     if ptt_res:
                         await websocket.send_text(json.dumps({"type": "ptt_status", "status": "idle"}))
                         await manager.broadcast_text(channel, {"type": "system", "message": f"✅ ខ្សែទំនេរ"})
+                        await manager.broadcast_text(channel, {
+                            "type": "ptt_status",
+                            "status": "idle"
+                        })
                         await process_voice_message(channel, ptt_res["speaker"], ptt_res["audio_bytes"])
                 elif action == "delete_message":
                     msg_id = data.get("id")
@@ -199,6 +208,18 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                         "status": action,
                         "sender": username
                     })
+
+                # --- Private Call Audio (ផ្ញើសំឡេងទៅចំគោលដៅ – មិន broadcast ទៅ group) ---
+                elif action == "call_audio":
+                    target = data.get("target")
+                    audio_b64 = data.get("audio")
+                    if target and audio_b64:
+                        import base64 as _b64
+                        try:
+                            raw_bytes = _b64.b64decode(audio_b64)
+                            await manager.send_audio_to_user(channel, target, raw_bytes)
+                        except Exception as e:
+                            print(f"[call_audio] decode error: {e}")
 
                 # --- WebRTC Group PTT Signaling Relay ---
                 elif action == "webrtc_signal":

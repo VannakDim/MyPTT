@@ -305,6 +305,7 @@ watch(showLogs, (newVal) => {
 let ws = null;
 let recordCtx = null; let sourceNode = null; let processorNode = null;
 let playCtx = null;
+let nextPlayTime = 0;
 
 const peerConnections = new Map();
 let localStream = null;
@@ -584,6 +585,12 @@ const connectWS = () => {
             pttState.value = 'busy'; 
             pttButtonText.value = '❌ ខ្សែរវល់';
             if (localTrack) localTrack.enabled = false;
+          } else if (data.status === 'busy') {
+            if (data.speaker !== username) {
+              pttState.value = 'busy';
+              pttButtonText.value = `🎙️ ${data.speaker} កំពុងនិយាយ...`;
+              if (localTrack) localTrack.enabled = false;
+            }
           } else if (data.status === 'idle') {
             pttState.value = 'idle'; 
             pttButtonText.value = 'ចុចជាប់ដើម្បីនិយាយ (PTT)';
@@ -788,7 +795,43 @@ const startTalking = () => { if (callMode.value === 'connected') return; if (ws?
 const stopTalking = () => { if (pttState.value === 'talking') { stopRecording(); ws.send(JSON.stringify({ action: "ptt_stop" })); } };
 const startRecording = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); recordCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); sourceNode = recordCtx.createMediaStreamSource(stream); processorNode = recordCtx.createScriptProcessor(4096, 1, 1); processorNode.onaudioprocess = (e) => { if (pttState.value !== 'talking') return; const input = e.inputBuffer.getChannelData(0); const buffer = new Int16Array(input.length); for (let i = 0; i < input.length; i++) buffer[i] = Math.min(1, Math.max(-1, input[i])) * 0x7FFF; if (ws?.readyState === WebSocket.OPEN) ws.send(buffer.buffer); }; sourceNode.connect(processorNode); processorNode.connect(recordCtx.destination); } catch (err) { console.error(err); } };
 const stopRecording = () => { if (processorNode) { processorNode.disconnect(); processorNode = null; } if (sourceNode) { sourceNode.disconnect(); sourceNode = null; } if (recordCtx && recordCtx.state !== 'closed') { recordCtx.close(); recordCtx = null; } };
-const playAudio = async (blob) => { if (isMuted.value) return; try { if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); if (playCtx.state === 'suspended') await playCtx.resume(); const arrayBuffer = await blob.arrayBuffer(); const int16 = new Int16Array(arrayBuffer); const float32 = new Float32Array(int16.length); for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x7FFF; const audioBuffer = playCtx.createBuffer(1, float32.length, 16000); audioBuffer.getChannelData(0).set(float32); const source = playCtx.createBufferSource(); source.buffer = audioBuffer; source.connect(playCtx.destination); source.start(); } catch (e) { console.error(e); } };
+const playAudio = async (blob) => {
+  if (isMuted.value) return;
+  try {
+    if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (playCtx.state === 'suspended') await playCtx.resume();
+    
+    const arrayBuffer = await blob.arrayBuffer();
+    const int16 = new Int16Array(arrayBuffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 0x7FFF;
+    }
+    
+    const audioBuffer = playCtx.createBuffer(1, float32.length, 16000);
+    audioBuffer.getChannelData(0).set(float32);
+    
+    const source = playCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(playCtx.destination);
+    
+    const currentTime = playCtx.currentTime;
+    // Latency mitigation: if scheduled time is too far in the future (> 400ms), catch up
+    if (nextPlayTime - currentTime > 0.4) {
+      nextPlayTime = currentTime + 0.1;
+    }
+    
+    if (nextPlayTime < currentTime) {
+      // Buffer was empty/dry or this is the first packet. Start with a 100ms jitter buffer
+      nextPlayTime = currentTime + 0.1;
+    }
+    
+    source.start(nextPlayTime);
+    nextPlayTime += audioBuffer.duration;
+  } catch (e) {
+    console.error("Error playing chunk:", e);
+  }
+};
 const sendChat = () => { if (!typedText.value.trim()) return; ws.send(JSON.stringify({ action: "chat_message", text: typedText.value })); typedText.value = ""; };
 const sendFile = (event) => { const file = event.target.files[0]; if (!file) return; if (file.size > 5 * 1024 * 1024) { alert("File ត្រូវតែមានទំហំតូចជាង 5MB"); return; } const reader = new FileReader(); reader.onload = () => { ws.send(JSON.stringify({ action: "file_share", file_name: file.name, file_type: file.type, file_data: reader.result })); }; reader.readAsDataURL(file); };
 const deleteMessage = async (msg) => {

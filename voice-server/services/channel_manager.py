@@ -103,6 +103,16 @@ class ChannelManager:
                 except Exception:
                     pass
 
+    async def send_audio_to_user(self, channel: str, target_username: str, audio_bytes: bytes):
+        """ ផ្ញើកញ្ចប់សំឡេងចំគោលដៅទៅកាន់ User ម្នាក់ (private call audio – មិន broadcast) """
+        if channel in self.channels:
+            for user_ws, name in self.channels[channel]["users"].items():
+                if str(name).lower() == str(target_username).lower():
+                    try:
+                        await user_ws.send_bytes(audio_bytes)
+                    except Exception:
+                        pass
+
     async def send_to_user(self, channel: str, target_username: str, data_dict: dict):
         """ ផ្ញើសារចំគោលដៅទៅកាន់ User ម្នាក់ជាក់លាក់ (មិនខ្វល់រឿងអក្សរធំ-តូច) """
         if channel in self.channels:
