@@ -58,7 +58,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   String _activePttSpeaker = "";
 
   // Draggable PTT Position
-  late final ValueNotifier<Offset> _pttPositionNotifier = ValueNotifier<Offset>(const Offset(200, 350));
+  late final ValueNotifier<Offset> _pttPositionNotifier = ValueNotifier<Offset>(const Offset(100, 350));
   bool _positionInitialized = false;
 
   // State variables for in-app PTT Listener
@@ -223,7 +223,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   void _onChatScroll() {
-    if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 200) {
+    if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 100) {
       _loadMoreMessages();
     }
   }
@@ -471,7 +471,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       if (_chatScrollController.hasClients) {
         _chatScrollController.animateTo(
           _chatScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
         );
       }
@@ -483,7 +483,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       if (_logsScrollController.hasClients && widget.showLogs) {
         _logsScrollController.animateTo(
           _logsScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
         );
       }
@@ -1504,7 +1504,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 
                 _pttDelayTimer?.cancel();
                 if (_pttState != 'busy') {
-                  _pttDelayTimer = Timer(const Duration(milliseconds: 200), () {
+                  _pttDelayTimer = Timer(const Duration(milliseconds: 100), () {
                     if (!_isDraggingPtt) {
                       _isPttActiveInAppNotifier.value = true;
                       _handlePttStart();
