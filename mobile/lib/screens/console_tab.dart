@@ -19,6 +19,8 @@ import '../models/chat_message.model.dart';
 import '../services/chat_cache_service.dart';
 import 'login_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class ConsoleTab extends StatefulWidget {
   final String userToken;
@@ -76,6 +78,11 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   double _pttTouchStartY = 0;
   Offset _pttInitialPosition = Offset.zero;
   static const double _pttDragThreshold = 10.0;
+
+  // File Uploading Progress
+  bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String _uploadStatus = "";
 
   // Logs and Chat State
   final List<String> _logs = [];
@@ -644,33 +651,138 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   Future<void> _processAndSendFile(Uint8List bytes, String name, String extension) async {
-    String fileType = 'application/octet-stream';
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+      _uploadStatus = "កំពុងរៀបចំឯកសារ...";
+    });
 
-    final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
-    if (isImage) {
-      // Compress the image to JPEG
-      final compressedBytes = await ImageService.compressImage(bytes, maxDimension: 1024, quality: 80);
-      if (compressedBytes != null) {
-        bytes = compressedBytes;
-        fileType = 'image/jpeg';
-        final dotIndex = name.lastIndexOf('.');
-        if (dotIndex != -1) {
-          name = '${name.substring(0, dotIndex)}.jpg';
+    try {
+      String fileType = 'application/octet-stream';
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
+      
+      Uint8List finalBytes = bytes;
+      if (isImage) {
+        setState(() {
+          _uploadStatus = "កំពុងច្របាច់ទំហំរូបភាព...";
+        });
+        final compressedBytes = await ImageService.compressImage(bytes, maxDimension: 1024, quality: 80);
+        if (compressedBytes != null) {
+          finalBytes = compressedBytes;
+          fileType = 'image/jpeg';
+          final dotIndex = name.lastIndexOf('.');
+          if (dotIndex != -1) {
+            name = '${name.substring(0, dotIndex)}.jpg';
+          } else {
+            name = '$name.jpg';
+          }
         } else {
-          name = '$name.jpg';
+          fileType = 'image/$extension';
+        }
+      }
+
+      final totalSizeMB = (finalBytes.length / (1024 * 1024)).toStringAsFixed(2);
+      setState(() {
+        _uploadStatus = "កំពុងបំប្លែងឯកសារ (ទំហំសរុប $totalSizeMB MB)...";
+      });
+
+      // Perform Base64 encoding in a background Isolate to avoid UI freeze (គាំងកម្មវិធី)
+      final base64Val = await compute(_encodeBase64Isolate, finalBytes);
+      final fullBase64Val = 'data:$fileType;base64,$base64Val';
+
+      final token = await ApiService.getToken();
+      final url = Uri.parse('${ApiService.baseUrl}/api/messages');
+      
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+
+      final body = {
+        "channel_name": widget.selectedGroup?.name ?? "",
+        "sender_name": _currentUsername,
+        "type": "file",
+        "file_name": name,
+        "file_type": fileType,
+        "file_data": fullBase64Val,
+      };
+
+      // Set up chunked progressive request
+      final request = http.StreamedRequest('POST', url);
+      request.headers.addAll(headers);
+
+      final jsonBytes = utf8.encode(jsonEncode(body));
+      final totalBytes = jsonBytes.length;
+
+      int offset = 0;
+      final chunkSize = 64 * 1024; // 64KB chunks
+
+      // Write request body asynchronously in chunks to calculate upload progress
+      Future.microtask(() async {
+        try {
+          while (offset < totalBytes) {
+            if (!mounted) break;
+            final length = (offset + chunkSize < totalBytes) ? chunkSize : (totalBytes - offset);
+            request.sink.add(jsonBytes.sublist(offset, offset + length));
+            offset += length;
+            
+            final sentMB = (offset / (1024 * 1024)).toStringAsFixed(2);
+            final totalMB = (totalBytes / (1024 * 1024)).toStringAsFixed(2);
+            
+            setState(() {
+              _uploadProgress = offset / totalBytes;
+              _uploadStatus = "បានផ្ញើ $sentMB MB / $totalMB MB";
+            });
+            await Future.delayed(const Duration(milliseconds: 1)); // Small delay to let event loop breathe and update UI smoothly
+          }
+        } catch (e) {
+          debugPrint("Progress stream error: $e");
+        } finally {
+          request.sink.close();
+        }
+      });
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final resData = jsonDecode(response.body);
+        
+        // Notify other clients instantly via websocket
+        _wsService.sendAction("file_share_completed", {
+          'id': resData['id'],
+          'file_name': resData['file_name'] ?? name,
+          'file_type': resData['file_type'] ?? fileType,
+          'file_path': resData['file_path'],
+          'created_at': resData['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
+        });
+
+        // Add local message instantly
+        final msg = ChatMessage.fromJson(resData, _currentUsername);
+        setState(() {
+          _chatMessages.insert(0, msg);
+        });
+        if (widget.selectedGroup != null) {
+          _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
         }
       } else {
-        fileType = 'image/$extension';
+        throw Exception("Server returned status: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error uploading file: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("⚠️ ការផ្ញើឯកសារបានបរាជ័យ៖ $e"), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
       }
     }
-
-    final base64Val = 'data:$fileType;base64,${base64Encode(bytes)}';
-
-    _wsService.sendAction("file_share", {
-      'file_name': name,
-      'file_type': fileType,
-      'file_data': base64Val,
-    });
   }
 
   void _toggleMute() {
@@ -1401,6 +1513,73 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
 
+  Widget _buildUploadProgressOverlay() {
+    if (!_isUploading) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    "កំពុងផ្ញើឯកសារ...",
+                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Text(
+                "${(_uploadProgress * 100).toStringAsFixed(1)}%",
+                style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _uploadProgress,
+              backgroundColor: const Color(0xFF334155),
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _uploadStatus,
+            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool hasChannel = widget.selectedGroup != null;
@@ -1837,6 +2016,14 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           ),
 
         if (_callMode != "idle") _buildCallOverlay(),
+
+        if (_isUploading)
+          Positioned(
+            bottom: 80, // Float above the input field
+            left: 0,
+            right: 0,
+            child: _buildUploadProgressOverlay(),
+          ),
       ],
     );
   }
@@ -2013,4 +2200,9 @@ class _SwipeToRevealState extends State<SwipeToReveal> with SingleTickerProvider
       ),
     );
   }
+}
+
+// Top-level function for compute Isolate to encode Base64 without freezing the main thread
+String _encodeBase64Isolate(Uint8List bytes) {
+  return base64Encode(bytes);
 }

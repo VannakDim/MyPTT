@@ -200,6 +200,23 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                         "file_data": file_data
                     })
 
+                elif action == "file_share_completed":
+                    msg_id = data.get("id")
+                    file_name = data.get("file_name")
+                    file_type = data.get("file_type")
+                    file_path = data.get("file_path")
+                    created_at = data.get("created_at")
+                    
+                    await manager.broadcast_text(channel, {
+                        "type": "file",
+                        "id": msg_id,
+                        "sender": username,
+                        "file_name": file_name,
+                        "file_type": file_type,
+                        "file_path": file_path,
+                        "created_at": created_at
+                    })
+
                 # --- ប្រព័ន្ធ Call (WebRTC Signaling) ---
                 elif action in ["call_user", "call_accepted", "call_rejected", "call_hungup"]:
                     target = data.get("target")
