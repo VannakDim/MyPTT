@@ -332,6 +332,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             });
           }
         } else if (type == 'ptt_status') {
+          if (_callMode != 'idle') return; // Skip PTT updates during calls!
           final status = frame['status'];
           setState(() {
             if (status == 'talking_granted') {
@@ -491,12 +492,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   }
 
   void _handlePttStart() {
-    if (_callMode == 'connected') return;
+    if (_callMode != 'idle') return;
     _wsService.sendAction("ptt_start", {});
   }
 
   void _handlePttStop() {
-    if (_callMode == 'connected') return;
+    if (_callMode != 'idle') return;
     _wsService.sendAction("ptt_stop", {});
   }
 
@@ -668,6 +669,24 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     );
   }
 
+  List<User> get sortedGroupMembers {
+    final list = List<User>.from(_groupMembers);
+    list.sort((a, b) {
+      final aMe = a.name.toLowerCase() == _currentUsername.toLowerCase();
+      final bMe = b.name.toLowerCase() == _currentUsername.toLowerCase();
+      if (aMe && !bMe) return -1;
+      if (!aMe && bMe) return 1;
+      
+      final aOnline = _isUserOnline(a.name);
+      final bOnline = _isUserOnline(b.name);
+      if (aOnline && !bOnline) return -1;
+      if (!aOnline && bOnline) return 1;
+      
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
+  }
+
   bool _isUserOnline(String name) {
     return _onlineUserList.contains(name.toLowerCase());
   }
@@ -724,9 +743,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   const SizedBox(height: 10),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: _groupMembers.length,
+                      itemCount: sortedGroupMembers.length,
                       itemBuilder: (context, i) {
-                        final member = _groupMembers[i];
+                        final member = sortedGroupMembers[i];
                         final isOnline = _isUserOnline(member.name);
                         final isMe = member.name.toLowerCase() == _currentUsername.toLowerCase();
 
