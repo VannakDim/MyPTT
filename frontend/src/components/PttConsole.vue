@@ -27,7 +27,7 @@
         @touchstart.prevent="unlockAudio(); startTalking();" 
         @touchend.prevent="stopTalking"
         :class="['ptt-btn', pttState]"
-        :disabled="callMode === 'connected'"
+        :disabled="callMode !== 'idle'"
       >
         {{ pttButtonText }}
       </button>
@@ -586,7 +586,7 @@ const connectWS = () => {
             pttButtonText.value = '❌ ខ្សែរវល់';
             if (localTrack) localTrack.enabled = false;
           } else if (data.status === 'busy') {
-            if (data.speaker !== username) {
+            if (String(data.speaker).trim().toLowerCase() !== String(username).trim().toLowerCase()) {
               pttState.value = 'busy';
               pttButtonText.value = `🎙️ ${data.speaker} កំពុងនិយាយ...`;
               if (localTrack) localTrack.enabled = false;
