@@ -602,7 +602,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.between,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           "ការកំណត់ប៊ូតុង PTT",
@@ -621,7 +621,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                     const Divider(color: Color(0xFF334155)),
                     const SizedBox(height: 10),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.between,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           "បង្ហាញប៊ូតុង PTT លើអេក្រង់",
