@@ -142,7 +142,108 @@ class MessageController extends Controller
     }
 
     /**
-     * 3. API for deleting one's own message.
+     * 3. API for handling chunked file uploads.
+     */
+    public function uploadChunk(Request $request)
+    {
+        $request->validate([
+            'upload_id' => 'required|string',
+            'chunk_index' => 'required|integer',
+            'total_chunks' => 'required|integer',
+            'file_name' => 'required|string',
+            'file_type' => 'required|string',
+            'channel_name' => 'required|string',
+            'chunk' => 'required|file',
+        ]);
+
+        $uploadId = $request->upload_id;
+        $chunkIndex = (int) $request->chunk_index;
+        $totalChunks = (int) $request->total_chunks;
+        $fileName = $request->file_name;
+        $fileType = $request->file_type;
+        $channelName = $request->channel_name;
+
+        // Resolve sender user
+        $senderUser = auth()->guard('sanctum')->user();
+        $senderName = $senderUser ? $senderUser->name : 'System';
+
+        // Temporary directory for chunks
+        $tempPath = 'chunks/' . $uploadId;
+        
+        // Save the current chunk
+        $chunkFile = $request->file('chunk');
+        Storage::disk('local')->putFileAs($tempPath, $chunkFile, (string) $chunkIndex);
+
+        // Check if all chunks have been received
+        $files = Storage::disk('local')->files($tempPath);
+        if (count($files) === $totalChunks) {
+            // Find the group
+            $group = Group::where('name', $channelName)->first();
+            if (!$group) {
+                // Cleanup chunks
+                Storage::disk('local')->deleteDirectory($tempPath);
+                return response()->json(['message' => 'Group not found'], 404);
+            }
+
+            // Assembly the chunks
+            $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+            if (empty($extension)) {
+                $extension = 'bin';
+            }
+            $safeName = Str::random(40) . '.' . $extension;
+            $finalPath = 'uploads/' . $safeName;
+
+            // Open stream to final destination in public disk
+            $publicDiskPath = Storage::disk('public')->path('uploads');
+            if (!file_exists($publicDiskPath)) {
+                mkdir($publicDiskPath, 0777, true);
+            }
+            $finalFilePath = $publicDiskPath . '/' . $safeName;
+            
+            $out = fopen($finalFilePath, 'wb');
+            if ($out) {
+                for ($i = 0; $i < $totalChunks; $i++) {
+                    $chunkFilePath = Storage::disk('local')->path($tempPath . '/' . $i);
+                    $in = fopen($chunkFilePath, 'rb');
+                    if ($in) {
+                        while ($buff = fread($in, 4096)) {
+                            fwrite($out, $buff);
+                        }
+                        fclose($in);
+                    }
+                }
+                fclose($out);
+            }
+
+            // Cleanup chunk directory
+            Storage::disk('local')->deleteDirectory($tempPath);
+
+            // Save message to database
+            $message = Message::create([
+                'group_id' => $group->id,
+                'sender_id' => $senderUser ? $senderUser->id : null,
+                'sender_name' => $senderName,
+                'type' => 'file',
+                'file_path' => '/storage/uploads/' . $safeName,
+                'file_name' => $fileName,
+                'file_type' => $fileType,
+            ]);
+
+            return response()->json([
+                'status' => 'completed',
+                'message' => $message
+            ], 201);
+        }
+
+        return response()->json([
+            'status' => 'processing',
+            'chunk_index' => $chunkIndex,
+            'total_chunks' => $totalChunks
+        ]);
+    }
+
+    /**
+     * 4. API for deleting one's own message.
      */
     public function destroy($id)
     {

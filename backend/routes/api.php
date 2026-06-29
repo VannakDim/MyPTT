@@ -28,6 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/my-groups', [GroupController::class, 'myGroups']);
     Route::get('/groups/{id}/members', [GroupController::class, 'groupMembers']);
+    Route::post('/upload-chunk', [\App\Http\Controllers\Api\MessageController::class, 'uploadChunk']);
     Route::get('/groups/{id}/messages', [\App\Http\Controllers\Api\MessageController::class, 'index']);
     Route::put('/profile', [\App\Http\Controllers\Api\UserController::class, 'updateProfile']);
     Route::delete('/messages/{id}', [\App\Http\Controllers\Api\MessageController::class, 'destroy']);

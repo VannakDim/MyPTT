@@ -21,6 +21,8 @@ import 'login_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:math';
 
 class ConsoleTab extends StatefulWidget {
   final String userToken;
@@ -614,10 +616,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       final XFile? image = await picker.pickImage(source: ImageSource.camera);
       if (image == null) return;
 
-      final bytes = await image.readAsBytes();
       final name = image.name;
       final extension = image.path.split('.').last.toLowerCase();
-      _processAndSendFile(bytes, name, extension);
+      _processAndSendFile(image.path, name, extension);
     } catch (e) {
       debugPrint("Error picking from camera: $e");
     }
@@ -629,10 +630,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image == null) return;
 
-      final bytes = await image.readAsBytes();
       final name = image.name;
       final extension = image.path.split('.').last.toLowerCase();
-      _processAndSendFile(bytes, name, extension);
+      _processAndSendFile(image.path, name, extension);
     } catch (e) {
       debugPrint("Error picking from gallery: $e");
     }
@@ -643,32 +643,32 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     if (result == null || result.files.isEmpty) return;
 
     final filePath = result.files.first.path!;
-    final file = File(filePath);
-    Uint8List bytes = await file.readAsBytes();
     String name = result.files.first.name;
     String extension = (result.files.first.extension ?? 'bin').toLowerCase();
-    _processAndSendFile(bytes, name, extension);
+    _processAndSendFile(filePath, name, extension);
   }
 
-  Future<void> _processAndSendFile(Uint8List bytes, String name, String extension) async {
+  Future<void> _processAndSendFile(String filePath, String name, String extension) async {
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
       _uploadStatus = "កំពុងរៀបចំឯកសារ...";
     });
 
+    File? tempCompressedFile;
+
     try {
       String fileType = 'application/octet-stream';
       final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
       
-      Uint8List finalBytes = bytes;
+      String targetPath = filePath;
       if (isImage) {
         setState(() {
           _uploadStatus = "កំពុងច្របាច់ទំហំរូបភាព...";
         });
+        final bytes = await File(filePath).readAsBytes();
         final compressedBytes = await ImageService.compressImage(bytes, maxDimension: 1024, quality: 80);
         if (compressedBytes != null) {
-          finalBytes = compressedBytes;
           fileType = 'image/jpeg';
           final dotIndex = name.lastIndexOf('.');
           if (dotIndex != -1) {
@@ -676,100 +676,70 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           } else {
             name = '$name.jpg';
           }
+          // Save compressed bytes to temp directory
+          final tempDir = await getTemporaryDirectory();
+          tempCompressedFile = File('${tempDir.path}/temp_upload_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          await tempCompressedFile.writeAsBytes(compressedBytes);
+          targetPath = tempCompressedFile.path;
         } else {
           fileType = 'image/$extension';
         }
       }
 
-      final totalSizeMB = (finalBytes.length / (1024 * 1024)).toStringAsFixed(2);
+      final file = File(targetPath);
+      final totalBytes = await file.length();
+      final totalSizeMB = (totalBytes / (1024 * 1024)).toStringAsFixed(2);
+
+      // We use 2MB chunk size
+      const int chunkSize = 2 * 1024 * 1024; // 2MB
+      final int totalChunks = (totalBytes / chunkSize).ceil();
+      final uploadId = "${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(100000)}";
+
       setState(() {
-        _uploadStatus = "កំពុងបំប្លែងឯកសារ (ទំហំសរុប $totalSizeMB MB)...";
+        _uploadStatus = "កំពុងផ្ញើ (ទំហំសរុប $totalSizeMB MB, ចំនួន ${totalChunks} កញ្ចប់)...";
       });
 
-      // Perform Base64 encoding in a background Isolate to avoid UI freeze (គាំងកម្មវិធី)
-      final base64Val = await compute(_encodeBase64Isolate, finalBytes);
-      final fullBase64Val = 'data:$fileType;base64,$base64Val';
-
-      final token = await ApiService.getToken();
-      final url = Uri.parse('${ApiService.baseUrl}/api/messages');
-      
-      final headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
-
-      final body = {
-        "channel_name": widget.selectedGroup?.name ?? "",
-        "sender_name": _currentUsername,
-        "type": "file",
-        "file_name": name,
-        "file_type": fileType,
-        "file_data": fullBase64Val,
-      };
-
-      // Set up progressive request with explicit content length
-      final request = http.StreamedRequest('POST', url);
-      request.headers.addAll(headers);
-
-      final jsonBytes = utf8.encode(jsonEncode(body));
-      final totalBytes = jsonBytes.length;
-      request.contentLength = totalBytes;
-
-      int offset = 0;
-      final chunkSize = 64 * 1024; // 64KB chunks
-
-      // Write request body asynchronously in chunks to calculate upload progress
-      Future.microtask(() async {
-        try {
-          while (offset < totalBytes) {
-            if (!mounted) break;
-            final length = (offset + chunkSize < totalBytes) ? chunkSize : (totalBytes - offset);
-            request.sink.add(jsonBytes.sublist(offset, offset + length));
-            offset += length;
-            
-            final sentMB = (offset / (1024 * 1024)).toStringAsFixed(2);
-            final totalMB = (totalBytes / (1024 * 1024)).toStringAsFixed(2);
-            
-            setState(() {
-              _uploadProgress = offset / totalBytes;
-              _uploadStatus = "បានផ្ញើ $sentMB MB / $totalMB MB";
-            });
-            await Future.delayed(const Duration(milliseconds: 1)); // Small delay to let event loop breathe and update UI smoothly
-          }
-        } catch (e) {
-          debugPrint("Progress stream error: $e");
-        } finally {
-          request.sink.close();
+      for (int i = 0; i < totalChunks; i++) {
+        if (!mounted || !_isUploading) {
+          throw Exception("ការផ្ញើត្រូវបានបោះបង់ចោល");
         }
-      });
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+        final start = i * chunkSize;
+        final end = (start + chunkSize > totalBytes) ? totalBytes : (start + chunkSize);
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final resData = jsonDecode(response.body);
-        
-        // Notify other clients instantly via websocket
-        _wsService.sendAction("file_share_completed", {
-          'id': resData['id'],
-          'file_name': resData['file_name'] ?? name,
-          'file_type': resData['file_type'] ?? fileType,
-          'file_path': resData['file_path'],
-          'created_at': resData['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
-        });
+        final chunkStream = file.openRead(start, end);
+        final Uint8List chunkBytes = Uint8List.fromList(await chunkStream.expand((chunk) => chunk).toList());
 
-        // Add local message instantly
-        final msg = ChatMessage.fromJson(resData, _currentUsername);
+        final sentBytes = (i + 1) * chunkSize > totalBytes ? totalBytes : (i + 1) * chunkSize;
+        final sentMB = (sentBytes / (1024 * 1024)).toStringAsFixed(2);
+        final totalMB = (totalBytes / (1024 * 1024)).toStringAsFixed(2);
+
         setState(() {
-          _chatMessages.insert(0, msg);
+          _uploadProgress = (i) / totalChunks;
+          _uploadStatus = "កំពុងផ្ញើកញ្ចប់ទី ${i + 1}/${totalChunks} ($sentMB MB / $totalMB MB)...";
         });
-        if (widget.selectedGroup != null) {
-          _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
+
+        final success = await _uploadSingleChunk(
+          uploadId: uploadId,
+          chunkIndex: i,
+          totalChunks: totalChunks,
+          fileName: name,
+          fileType: fileType,
+          chunkBytes: chunkBytes,
+        );
+
+        if (!success) {
+          throw Exception("ការផ្ញើកញ្ចប់ទី ${i + 1} បានបរាជ័យ");
         }
-      } else {
-        throw Exception("Server returned status: ${response.statusCode}");
       }
+
+      if (mounted) {
+        setState(() {
+          _uploadProgress = 1.0;
+          _uploadStatus = "បានផ្ញើជោគជ័យ!";
+        });
+      }
+
     } catch (e) {
       debugPrint("Error uploading file: $e");
       if (mounted) {
@@ -778,12 +748,84 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         );
       }
     } finally {
+      // Clean up temp compressed file if created
+      if (tempCompressedFile != null && await tempCompressedFile.exists()) {
+        try {
+          await tempCompressedFile.delete();
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() {
           _isUploading = false;
         });
       }
     }
+  }
+
+  Future<bool> _uploadSingleChunk({
+    required String uploadId,
+    required int chunkIndex,
+    required int totalChunks,
+    required String fileName,
+    required String fileType,
+    required Uint8List chunkBytes,
+  }) async {
+    try {
+      final token = await ApiService.getToken();
+      final url = Uri.parse('${ApiService.baseUrl}/api/upload-chunk');
+      
+      final request = http.MultipartRequest('POST', url);
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      request.headers['Accept'] = 'application/json';
+      
+      request.fields['upload_id'] = uploadId;
+      request.fields['chunk_index'] = chunkIndex.toString();
+      request.fields['total_chunks'] = totalChunks.toString();
+      request.fields['file_name'] = fileName;
+      request.fields['file_type'] = fileType;
+      request.fields['channel_name'] = widget.selectedGroup?.name ?? "";
+      
+      request.files.add(http.MultipartFile.fromBytes(
+        'chunk',
+        chunkBytes,
+        filename: 'chunk_$chunkIndex',
+      ));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final resData = jsonDecode(response.body);
+        
+        if (resData['status'] == 'completed') {
+          final messageData = resData['message'];
+          
+          // Notify other clients instantly via websocket
+          _wsService.sendAction("file_share_completed", {
+            'id': messageData['id'],
+            'file_name': messageData['file_name'] ?? fileName,
+            'file_type': messageData['file_type'] ?? fileType,
+            'file_path': messageData['file_path'],
+            'created_at': messageData['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          });
+
+          // Add local message instantly
+          final msg = ChatMessage.fromJson(messageData, _currentUsername);
+          setState(() {
+            _chatMessages.insert(0, msg);
+          });
+          if (widget.selectedGroup != null) {
+            _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
+          }
+        }
+        return true;
+      }
+    } catch (e) {
+      debugPrint("Error sending chunk: $e");
+    }
+    return false;
   }
 
   void _toggleMute() {
