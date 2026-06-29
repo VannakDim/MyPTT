@@ -251,4 +251,26 @@ class ApiService {
       return false;
     }
   }
+
+  // ១១. លុបសារសន្ទនាច្រើនក្នុងពេលតែមួយ (Batch Delete Chat Messages)
+  static Future<List<int>> deleteMessages(List<int> ids) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/messages'),
+        headers: headers,
+        body: jsonEncode({'ids': ids}),
+      );
+      debugPrint('[API] deleteMessages(${ids.length}) status=${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final deleted = data['deleted_ids'] as List? ?? [];
+        return deleted.map<int>((e) => e as int).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[API] deleteMessages exception: $e');
+      return [];
+    }
+  }
 }

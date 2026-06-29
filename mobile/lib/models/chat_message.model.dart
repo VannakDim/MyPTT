@@ -10,6 +10,13 @@ class ChatMessage {
   final bool isMe;
   final DateTime? createdAt;
 
+  // Reply fields
+  final int? replyToId;
+  final String? replyToSender;
+  final String? replyToText;
+  final String? replyToType;
+  final String? replyToFileName;
+
   ChatMessage({
     this.id,
     required this.sender,
@@ -21,6 +28,11 @@ class ChatMessage {
     this.filePath,
     required this.isMe,
     this.createdAt,
+    this.replyToId,
+    this.replyToSender,
+    this.replyToText,
+    this.replyToType,
+    this.replyToFileName,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json, String currentUsername) {
@@ -42,6 +54,24 @@ class ChatMessage {
       timeVal = DateTime.tryParse(json['created_at'].toString());
     }
 
+    // Parse reply_to from nested object
+    int? replyToIdVal;
+    String? replyToSenderVal;
+    String? replyToTextVal;
+    String? replyToTypeVal;
+    String? replyToFileNameVal;
+
+    if (json['reply_to'] != null && json['reply_to'] is Map) {
+      final rt = json['reply_to'] as Map<String, dynamic>;
+      replyToIdVal = rt['id'];
+      replyToSenderVal = rt['sender_name']?.toString();
+      replyToTextVal = rt['text']?.toString();
+      replyToTypeVal = rt['type']?.toString();
+      replyToFileNameVal = rt['file_name']?.toString();
+    } else if (json['reply_to_id'] != null) {
+      replyToIdVal = json['reply_to_id'];
+    }
+
     return ChatMessage(
       id: idVal,
       sender: senderVal,
@@ -53,6 +83,11 @@ class ChatMessage {
       filePath: json['file_path'],
       isMe: senderVal.toLowerCase() == currentUsername.toLowerCase(),
       createdAt: timeVal,
+      replyToId: replyToIdVal,
+      replyToSender: replyToSenderVal,
+      replyToText: replyToTextVal,
+      replyToType: replyToTypeVal,
+      replyToFileName: replyToFileNameVal,
     );
   }
 
@@ -67,6 +102,15 @@ class ChatMessage {
       'file_data': fileData,
       'file_path': filePath,
       'created_at': createdAt?.toIso8601String(),
+      'reply_to_id': replyToId,
+      'reply_to': replyToSender != null ? {
+        'id': replyToId,
+        'sender_name': replyToSender,
+        'text': replyToText,
+        'type': replyToType,
+        'file_name': replyToFileName,
+      } : null,
     };
   }
 }
+

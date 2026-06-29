@@ -15,6 +15,7 @@ class Message extends Model
         'file_path',
         'file_name',
         'file_type',
+        'reply_to_id',
     ];
 
     public function group()
@@ -25,5 +26,10 @@ class Message extends Model
     public function sender()
     {
         return $this->belongsTo(User::class, 'sender_id');
+    }
+
+    public function replyTo()
+    {
+        return $this->belongsTo(Message::class, 'reply_to_id');
     }
 }

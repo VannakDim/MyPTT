@@ -94,6 +94,11 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   final Map<String, String> _localFilePaths = {};
   String? _playingVoiceUrl;
   final _chatController = TextEditingController();
+
+  // Reply & Select State
+  ChatMessage? _replyingTo;
+  bool _isSelectMode = false;
+  final Set<int> _selectedMessageIds = {};
   
   final _chatScrollController = ScrollController();
   final _logsScrollController = ScrollController();
@@ -557,8 +562,15 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   void _sendChatMessage() {
     final text = _chatController.text.trim();
     if (text.isEmpty) return;
-    _wsService.sendAction("chat_message", {'text': text});
+    final payload = <String, dynamic>{'text': text};
+    if (_replyingTo?.id != null) {
+      payload['reply_to_id'] = _replyingTo!.id;
+    }
+    _wsService.sendAction("chat_message", payload);
     _chatController.clear();
+    setState(() {
+      _replyingTo = null;
+    });
   }
 
   Future<void> _showSendFileOptions() async {
@@ -1914,6 +1926,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 ),
 
               // Main Chat Area
+              // Selection top bar (shown when in select mode)
+              if (_isSelectMode) _buildSelectionTopBar(),
+
                   Expanded(
                 child: hasChannel
                     ? ListView.builder(
@@ -1924,71 +1939,139 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                         itemBuilder: (context, i) {
                           final msg = _chatMessages[i];
                           final showHeader = !msg.isMe && _shouldShowTime(i);
-                          
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            alignment: msg.isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Column(
-                              crossAxisAlignment: msg.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                              children: [
-                                if (showHeader) ...[
-                                  Row(
+                          final isSelected = _isSelectMode && msg.id != null && _selectedMessageIds.contains(msg.id);
+
+                          // Bubble tap/longPress
+                          void onLongPress() {
+                            if (!_isSelectMode) {
+                              _showMessageContextMenu(msg);
+                            }
+                          }
+
+                          void onTap() {
+                            if (_isSelectMode && msg.id != null) {
+                              setState(() {
+                                if (_selectedMessageIds.contains(msg.id)) {
+                                  _selectedMessageIds.remove(msg.id);
+                                  if (_selectedMessageIds.isEmpty) {
+                                    _isSelectMode = false;
+                                  }
+                                } else {
+                                  _selectedMessageIds.add(msg.id!);
+                                }
+                              });
+                            }
+                          }
+
+                          Widget bubble = msg.type == 'chat'
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF0EA5E9).withValues(alpha: 0.4)
+                                        : msg.isMe
+                                            ? const Color(0xFF0EA5E9)
+                                            : const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(12),
+                                      topRight: const Radius.circular(12),
+                                      bottomLeft: msg.isMe ? const Radius.circular(12) : const Radius.circular(0),
+                                      bottomRight: msg.isMe ? const Radius.circular(0) : const Radius.circular(12),
+                                    ),
+                                    border: Border.all(
+                                      color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFF334155),
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      _buildSenderAvatar(msg.sender),
-                                      const SizedBox(width: 6),
+                                      if (msg.replyToSender != null) _buildReplyQuotedBox(msg),
                                       Text(
-                                        msg.sender,
-                                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.bold),
+                                        msg.text ?? '',
+                                        style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
                                       ),
+                                      if (_shouldShowTime(i)) ...[
+                                        const SizedBox(height: 4),
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: Text(
+                                            _formatMessageTime(msg.createdAt),
+                                            style: TextStyle(
+                                              color: msg.isMe ? Colors.white70 : Colors.white54,
+                                              fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
-                                  const SizedBox(height: 4),
-                                ],
-                                SwipeToReveal(
-                                  isMe: msg.isMe && msg.id != null,
-                                  onDelete: () {
-                                    _showDeleteDialog(msg);
-                                  },
-                                  child: msg.type == 'chat'
-                                      ? Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            color: msg.isMe ? const Color(0xFF0EA5E9) : const Color(0xFF1E293B),
-                                            borderRadius: BorderRadius.only(
-                                              topLeft: const Radius.circular(12),
-                                              topRight: const Radius.circular(12),
-                                              bottomLeft: msg.isMe ? const Radius.circular(12) : const Radius.circular(0),
-                                              bottomRight: msg.isMe ? const Radius.circular(0) : const Radius.circular(12),
-                                            ),
-                                            border: Border.all(color: const Color(0xFF334155)),
+                                )
+                              : msg.type == 'file'
+                                  ? _buildFileShareWidget(msg, i)
+                                  : _buildVoiceMessageWidget(msg, i);
+
+                          return GestureDetector(
+                            onLongPress: onLongPress,
+                            onTap: onTap,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                mainAxisAlignment: msg.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // Checkbox for select mode (left side for all messages)
+                                  if (_isSelectMode)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8, left: 4),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 150),
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isSelected ? const Color(0xFF0EA5E9) : Colors.transparent,
+                                          border: Border.all(
+                                            color: isSelected ? const Color(0xFF0EA5E9) : const Color(0xFF475569),
+                                            width: 2,
                                           ),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                        ),
+                                        child: isSelected
+                                            ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                                            : null,
+                                      ),
+                                    ),
+                                  Flexible(
+                                    child: Column(
+                                      crossAxisAlignment: msg.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                      children: [
+                                        if (showHeader) ...[
+                                          Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
+                                              _buildSenderAvatar(msg.sender),
+                                              const SizedBox(width: 6),
                                               Text(
-                                                msg.text ?? '',
-                                                style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
+                                                msg.sender,
+                                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.bold),
                                               ),
-                                              if (_shouldShowTime(i)) ...[
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  _formatMessageTime(msg.createdAt),
-                                                   style: TextStyle(
-                                                     color: msg.isMe ? Colors.white70 : Colors.white54,
-                                                     fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
-                                                   ),
-                                                ),
-                                              ],
                                             ],
                                           ),
-                                        )
-                                      : msg.type == 'file'
-                                          ? _buildFileShareWidget(msg, i)
-                                          : _buildVoiceMessageWidget(msg, i),
-                                ),
-                              ],
+                                          const SizedBox(height: 4),
+                                        ],
+                                        SwipeToReveal(
+                                          isMe: msg.isMe && msg.id != null && !_isSelectMode,
+                                          onDelete: () {
+                                            _showDeleteDialog(msg);
+                                          },
+                                          child: bubble,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -2027,6 +2110,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   ),
                 ),
               ],
+
+              if (hasChannel) _buildReplyPreviewBar(),
 
               if (hasChannel)
                 Padding(
@@ -2278,6 +2363,280 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         const SnackBar(content: Text("មានបញ្ហាក្នុងការលុបសារ")),
       );
     }
+  }
+
+  void _showMessageContextMenu(ChatMessage msg) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12, bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF475569),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Reply
+                ListTile(
+                  leading: const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Color(0xFF0EA5E9),
+                    child: Icon(Icons.reply_rounded, color: Colors.white, size: 18),
+                  ),
+                  title: const Text("ឆ្លើយ (Reply)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  subtitle: const Text("ឆ្លើយតបលើសារនេះ", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _replyingTo = msg;
+                    });
+                  },
+                ),
+                const Divider(color: Color(0xFF334155), height: 1),
+                // Select
+                ListTile(
+                  leading: const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Color(0xFF334155),
+                    child: Icon(Icons.check_circle_outline_rounded, color: Colors.white70, size: 18),
+                  ),
+                  title: const Text("ជ្រើសរើស (Select)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  subtitle: const Text("ជ្រើសសារដើម្បីលុបបន្ថែម", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _isSelectMode = true;
+                      if (msg.id != null) {
+                        _selectedMessageIds.add(msg.id!);
+                      }
+                    });
+                  },
+                ),
+                // Delete (only own messages)
+                if (msg.isMe && msg.id != null) ...[
+                  const Divider(color: Color(0xFF334155), height: 1),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Color(0xFF7F1D1D),
+                      child: Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 18),
+                    ),
+                    title: const Text("លុប (Delete)", style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600)),
+                    subtitle: const Text("លុបសារនេះចោល", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showDeleteDialog(msg);
+                    },
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteSelectedMessages() async {
+    final ids = _selectedMessageIds.where((id) {
+      final msg = _chatMessages.firstWhere((m) => m.id == id, orElse: () => ChatMessage(sender: '', type: 'chat', isMe: false));
+      return msg.isMe;
+    }).toList();
+
+    if (ids.isEmpty) {
+      setState(() {
+        _isSelectMode = false;
+        _selectedMessageIds.clear();
+      });
+      return;
+    }
+
+    final deletedIds = await ApiService.deleteMessages(ids);
+
+    if (deletedIds.isNotEmpty) {
+      setState(() {
+        _chatMessages.removeWhere((m) => m.id != null && deletedIds.contains(m.id));
+        _isSelectMode = false;
+        _selectedMessageIds.clear();
+      });
+      for (final id in deletedIds) {
+        if (_wsService.isConnected) {
+          _wsService.sendAction("delete_message", {"id": id});
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ បានលុប ${deletedIds.length} សារ"),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } else {
+      // Fallback: delete one by one
+      int successCount = 0;
+      for (final id in ids) {
+        final ok = await ApiService.deleteMessage(id);
+        if (ok) {
+          successCount++;
+          setState(() {
+            _chatMessages.removeWhere((m) => m.id == id);
+          });
+          if (_wsService.isConnected) {
+            _wsService.sendAction("delete_message", {"id": id});
+          }
+        }
+      }
+      setState(() {
+        _isSelectMode = false;
+        _selectedMessageIds.clear();
+      });
+      if (mounted && successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ បានលុប $successCount សារ"),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildReplyPreviewBar() {
+    if (_replyingTo == null) return const SizedBox.shrink();
+    final preview = _replyingTo!.type == 'voice'
+        ? '🎙️ សារសំឡេង'
+        : _replyingTo!.type == 'file'
+            ? '📎 ${_replyingTo!.fileName ?? 'ឯកសារ'}'
+            : (_replyingTo!.text ?? '');
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        border: const Border(left: BorderSide(color: Color(0xFF0EA5E9), width: 3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _replyingTo!.sender,
+                  style: const TextStyle(color: Color(0xFF0EA5E9), fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  preview,
+                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _replyingTo = null),
+            child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: const Color(0xFF0F172A),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() {
+              _isSelectMode = false;
+              _selectedMessageIds.clear();
+            }),
+            child: const Icon(Icons.close_rounded, color: Colors.white70),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'បានជ្រើស ${_selectedMessageIds.length} សារ',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ),
+          if (_selectedMessageIds.isNotEmpty)
+            GestureDetector(
+              onTap: _deleteSelectedMessages,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.delete_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text('លុប', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyQuotedBox(ChatMessage msg) {
+    final preview = msg.replyToType == 'voice'
+        ? '🎙️ សារសំឡេង'
+        : msg.replyToType == 'file'
+            ? '📎 ${msg.replyToFileName ?? 'ឯកសារ'}'
+            : (msg.replyToText ?? '');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(left: BorderSide(color: Color(0xFF38BDF8), width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            msg.replyToSender ?? '',
+            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            preview,
+            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
   }
 
   @override

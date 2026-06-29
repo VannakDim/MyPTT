@@ -47,6 +47,7 @@ class MessageController extends Controller
             'file_name' => 'nullable|string',
             'file_type' => 'nullable|string',
             'file_data' => 'nullable|string', // Base64 data url
+            'reply_to_id' => 'nullable|integer|exists:messages,id',
         ]);
 
         // Find the group (channel_name corresponds to group name)
@@ -108,7 +109,13 @@ class MessageController extends Controller
             'file_path' => $filePath,
             'file_name' => $request->file_name,
             'file_type' => $request->file_type ?? $request->header('Content-Type'),
+            'reply_to_id' => $request->reply_to_id ?? null,
         ]);
+
+        // Eager-load reply_to for the response
+        $message->load(['replyTo' => function ($q) {
+            $q->select('id', 'sender_name', 'text', 'type', 'file_name');
+        }]);
 
         return response()->json($message, 201);
     }
@@ -130,9 +137,15 @@ class MessageController extends Controller
         }
 
         // Get the latest 15 messages (by descending ID)
-        $messages = $query->with(['sender' => function ($query) {
-                $query->select('id', 'name', 'avatar');
-            }])
+        $messages = $query
+            ->with([
+                'sender' => function ($q) {
+                    $q->select('id', 'name', 'avatar');
+                },
+                'replyTo' => function ($q) {
+                    $q->select('id', 'sender_name', 'text', 'type', 'file_name');
+                },
+            ])
             ->orderBy('id', 'desc')
             ->limit(15)
             ->get();
@@ -266,6 +279,42 @@ class MessageController extends Controller
         $message->delete();
 
         return response()->json(['message' => 'Message deleted successfully']);
+    }
+
+    /**
+     * 5. API for batch deleting multiple messages.
+     */
+    public function batchDestroy(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $userId = auth()->id();
+        $ids = $request->ids;
+
+        // Only allow deleting own messages
+        $messages = Message::whereIn('id', $ids)
+            ->where('sender_id', $userId)
+            ->get();
+
+        foreach ($messages as $message) {
+            if ($message->file_path) {
+                $storagePath = str_replace('/storage/', '', $message->file_path);
+                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($storagePath)) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($storagePath);
+                }
+            }
+            $message->delete();
+        }
+
+        $deletedIds = $messages->pluck('id')->toArray();
+
+        return response()->json([
+            'message' => 'Messages deleted successfully',
+            'deleted_ids' => $deletedIds,
+        ]);
     }
 }
 

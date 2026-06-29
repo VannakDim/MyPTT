@@ -32,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/groups/{id}/messages', [\App\Http\Controllers\Api\MessageController::class, 'index']);
     Route::put('/profile', [\App\Http\Controllers\Api\UserController::class, 'updateProfile']);
     Route::delete('/messages/{id}', [\App\Http\Controllers\Api\MessageController::class, 'destroy']);
+    Route::delete('/messages', [\App\Http\Controllers\Api\MessageController::class, 'batchDestroy']);
 
     // User Management for Admins Only
     Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->group(function () {
