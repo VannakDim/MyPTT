@@ -55,6 +55,10 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   List<String> _onlineUserList = [];
   String _systemStatus = "Connecting...";
 
+  // PTT Settings
+  bool _showPttButtonLocal = true;
+  String _pttMode = "push"; // 'push' or 'toggle'
+
   // PTT State
   String _pttState = "idle"; // 'idle', 'talking', 'busy'
   String _activePttSpeaker = "";
@@ -173,6 +177,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _currentUsername = prefs.getString('ptt_username') ?? 'admin';
+      _showPttButtonLocal = prefs.getBool('ptt_show_button') ?? widget.showPttButton;
+      _pttMode = prefs.getString('ptt_press_mode') ?? 'push';
       _webrtcService = WebRTCService(_wsService, _currentUsername);
     });
   }
@@ -576,6 +582,159 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       _isMuted = !_isMuted;
       _audioService.setMute(_isMuted);
     });
+  }
+
+  void _showPttSettingsDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.between,
+                      children: [
+                        const Text(
+                          "ការកំណត់ប៊ូតុង PTT",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white70),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Color(0xFF334155)),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.between,
+                      children: [
+                        const Text(
+                          "បង្ហាញប៊ូតុង PTT លើអេក្រង់",
+                          style: TextStyle(color: Colors.white, fontSize: 15),
+                        ),
+                        Switch(
+                          value: _showPttButtonLocal,
+                          activeColor: const Color(0xFF0EA5E9),
+                          onChanged: (val) async {
+                            setModalState(() {
+                              _showPttButtonLocal = val;
+                            });
+                            setState(() {
+                              _showPttButtonLocal = val;
+                            });
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('ptt_show_button', val);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    const Text(
+                      "របៀបចុចនិយាយ (PTT Mode)",
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              setModalState(() {
+                                _pttMode = "push";
+                              });
+                              setState(() {
+                                _pttMode = "push";
+                              });
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setString('ptt_press_mode', 'push');
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _pttMode == "push"
+                                    ? const Color(0xFF0EA5E9)
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _pttMode == "push"
+                                      ? const Color(0xFF0EA5E9)
+                                      : const Color(0xFF334155),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                "ចុចជាប់និយាយ (Push)",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              setModalState(() {
+                                _pttMode = "toggle";
+                              });
+                              setState(() {
+                                _pttMode = "toggle";
+                              });
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setString('ptt_press_mode', 'toggle');
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _pttMode == "toggle"
+                                    ? const Color(0xFF0EA5E9)
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _pttMode == "toggle"
+                                      ? const Color(0xFF0EA5E9)
+                                      : const Color(0xFF334155),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                "ចុចបើក/បិទ (Toggle)",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void makeCall(String targetUser) {
@@ -1332,6 +1491,17 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                       constraints: const BoxConstraints(),
                       onPressed: _toggleMute,
                     ),
+                    const SizedBox(width: 15),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.settings_rounded,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: _showPttSettingsDialog,
+                    ),
                   ],
                 ),
               ),
@@ -1528,7 +1698,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         ),
         
         // Draggable Floating PTT Button Card
-        if (hasChannel && widget.showPttButton)
+        if (hasChannel && _showPttButtonLocal)
           ValueListenableBuilder<Offset>(
             valueListenable: _pttPositionNotifier,
             builder: (context, position, child) {
@@ -1547,13 +1717,15 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 _isDraggingPtt = false;
                 
                 _pttDelayTimer?.cancel();
-                if (_pttState != 'busy' && _callMode == 'idle') {
-                  _pttDelayTimer = Timer(const Duration(milliseconds: 100), () {
-                    if (!_isDraggingPtt) {
-                      _isPttActiveInAppNotifier.value = true;
-                      _handlePttStart();
-                    }
-                  });
+                if (_pttMode == 'push') {
+                  if (_pttState != 'busy' && _callMode == 'idle') {
+                    _pttDelayTimer = Timer(const Duration(milliseconds: 100), () {
+                      if (!_isDraggingPtt) {
+                        _isPttActiveInAppNotifier.value = true;
+                        _handlePttStart();
+                      }
+                    });
+                  }
                 }
               },
               onPointerMove: (event) {
@@ -1578,11 +1750,26 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               },
               onPointerUp: (event) {
                 _pttDelayTimer?.cancel();
-                if (_isPttActiveInAppNotifier.value) {
-                  _handlePttStop();
+                if (_pttMode == 'toggle') {
+                  if (!_isDraggingPtt) {
+                    if (_isPttActiveInAppNotifier.value) {
+                      _handlePttStop();
+                      _isPttActiveInAppNotifier.value = false;
+                    } else {
+                      if (_pttState != 'busy' && _callMode == 'idle') {
+                        _isPttActiveInAppNotifier.value = true;
+                        _handlePttStart();
+                      }
+                    }
+                  }
+                } else {
+                  // Normal 'push' mode release
+                  if (_isPttActiveInAppNotifier.value) {
+                    _handlePttStop();
+                  }
+                  _isPttActiveInAppNotifier.value = false;
                 }
                 _isDraggingPtt = false;
-                _isPttActiveInAppNotifier.value = false;
               },
               onPointerCancel: (event) {
                 _pttDelayTimer?.cancel();
@@ -1598,6 +1785,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                   Color localPttBtnColor = const Color(0xFF0EA5E9);
                   if (_callMode != 'idle') {
                     localPttBtnColor = Colors.grey;
+                  } else if (isPttActiveInApp) {
+                    localPttBtnColor = const Color(0xFF2ECC71); // Green while we speak!
                   } else if (_pttState == "busy") {
                     localPttBtnColor = const Color(0xFFEF4444);
                   }
@@ -1626,14 +1815,18 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _callMode != 'idle' ? "📞" : (_pttState == "busy" ? "🛑" : "PTT"),
+                          _callMode != 'idle' 
+                              ? "📞" 
+                              : (isPttActiveInApp 
+                                  ? "🎙️" 
+                                  : (_pttState == "busy" ? "🛑" : "PTT")),
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
                           ),
                         ),
-                        if (_callMode == 'idle' && _pttState != "busy")
+                        if (_callMode == 'idle' && _pttState != "busy" && !isPttActiveInApp)
                           const Text(
                             "PUSH",
                             style: TextStyle(
