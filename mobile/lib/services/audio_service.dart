@@ -93,7 +93,7 @@ class AudioService {
     // Initialize flutter_pcm_sound for output stream
     try {
       await FlutterPcmSound.setup(
-        sampleRate: 8000,
+        sampleRate: 16000,
         channelCount: 1,
       );
       await FlutterPcmSound.setFeedThreshold(800); // Trigger callback when remaining samples < 800
@@ -110,8 +110,8 @@ class AudioService {
     final int framesToFeed = remainingFrames > 0 ? remainingFrames : 800;
     
     if (_isBuffering) {
-      // Jitter buffer threshold: wait until we accumulate 1200 samples (150ms of audio)
-      if (_audioQueue.length >= 1200) {
+      // Jitter buffer threshold: wait until we accumulate 2400 samples (150ms of audio)
+      if (_audioQueue.length >= 2400) {
         _isBuffering = false;
       } else {
         try {
@@ -164,11 +164,11 @@ class AudioService {
     _recordingStreamController = StreamController<Uint8List>();
     _recordingSubscription = _recordingStreamController!.stream.listen((bytes) {
       _accumulationBuffer.addAll(bytes);
-      // We packetize into chunks of 2048 bytes (1024 samples / 128ms)
+      // We packetize into chunks of 4096 bytes (2048 samples / 128ms)
       // to make it much easier for the Web Audio API on the PC browser to play back smoothly
-      while (_accumulationBuffer.length >= 2048) {
-        final Uint8List packet = Uint8List.fromList(_accumulationBuffer.sublist(0, 2048));
-        _accumulationBuffer.removeRange(0, 2048);
+      while (_accumulationBuffer.length >= 4096) {
+        final Uint8List packet = Uint8List.fromList(_accumulationBuffer.sublist(0, 4096));
+        _accumulationBuffer.removeRange(0, 4096);
         _onDataReceivedCallback?.call(packet);
       }
     });
@@ -178,7 +178,7 @@ class AudioService {
       codec: Codec.pcm16,
       audioSource: AudioSource.voice_communication,
       numChannels: 1,
-      sampleRate: 8000,
+      sampleRate: 16000,
     );
 
     // Force speakerphone ON immediately after starting recording
@@ -249,10 +249,10 @@ class AudioService {
       
       _audioQueue.addAll(int16List);
 
-      // Latency mitigation: if queue builds up more than 3200 samples (400ms),
+      // Latency mitigation: if queue builds up more than 6400 samples (400ms),
       // discard the oldest samples to catch up to real-time.
-      if (_audioQueue.length > 3200) {
-        _audioQueue.removeRange(0, _audioQueue.length - 1600);
+      if (_audioQueue.length > 6400) {
+        _audioQueue.removeRange(0, _audioQueue.length - 2400);
       }
 
       // Start the player once if it's not already playing
