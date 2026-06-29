@@ -393,6 +393,7 @@ class _CamboComAppState extends State<CamboComApp> {
       title: 'CamboCom',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        fontFamily: 'Battambang',
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F172A), // Slate 900
         primaryColor: const Color(0xFF0EA5E9), // Cyan 500
