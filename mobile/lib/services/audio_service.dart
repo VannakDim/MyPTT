@@ -96,7 +96,7 @@ class AudioService {
         sampleRate: 16000,
         channelCount: 1,
       );
-      await FlutterPcmSound.setFeedThreshold(800); // Trigger callback when remaining samples < 800
+      await FlutterPcmSound.setFeedThreshold(1600); // Trigger callback when remaining samples < 1600
       FlutterPcmSound.setFeedCallback(_onFeed);
       _isPlayerInitialized = true;
       await _setSpeakerphone(true);
@@ -107,11 +107,11 @@ class AudioService {
 
   // Callback to feed samples dynamically to AudioTrack
   void _onFeed(int remainingFrames) async {
-    final int framesToFeed = remainingFrames > 0 ? remainingFrames : 800;
+    final int framesToFeed = remainingFrames > 0 ? remainingFrames : 1600;
     
     if (_isBuffering) {
-      // Jitter buffer threshold: wait until we accumulate 2400 samples (150ms of audio)
-      if (_audioQueue.length >= 2400) {
+      // Jitter buffer threshold: wait until we accumulate 1600 samples (100ms of audio)
+      if (_audioQueue.length >= 1600) {
         _isBuffering = false;
       } else {
         try {
@@ -252,7 +252,7 @@ class AudioService {
       // Latency mitigation: if queue builds up more than 6400 samples (400ms),
       // discard the oldest samples to catch up to real-time.
       if (_audioQueue.length > 6400) {
-        _audioQueue.removeRange(0, _audioQueue.length - 2400);
+        _audioQueue.removeRange(0, _audioQueue.length - 1600);
       }
 
       // Start the player once if it's not already playing
