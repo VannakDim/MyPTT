@@ -259,19 +259,21 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
 
     try {
       final messages = await ApiService.getGroupMessages(groupId);
-      if (mounted) {
-        setState(() {
-          _chatMessages.clear();
-          _chatMessages.addAll(messages.reversed);
-          _isLoadingMore = false;
-          _hasMoreMessages = messages.length >= 15;
-        });
-        _scrollToLastReadMessage(groupId);
-        _markMessagesAsSeen(_chatMessages);
+      if (messages != null) {
+        if (mounted) {
+          setState(() {
+            _chatMessages.clear();
+            _chatMessages.addAll(messages.reversed);
+            _isLoadingMore = false;
+            _hasMoreMessages = messages.length >= 15;
+          });
+          _scrollToLastReadMessage(groupId);
+          _markMessagesAsSeen(_chatMessages);
+        }
+        // ២. រក្សាទុកសារដែលទើបតែទាញយកបានថ្មីៗ ចូលទៅក្នុង cache
+        _cacheService.cacheMessages(groupId, messages);
+        _checkDownloadedFiles();
       }
-      // ២. រក្សាទុកសារដែលទើបតែទាញយកបានថ្មីៗ ចូលទៅក្នុង cache
-      _cacheService.cacheMessages(groupId, messages);
-      _checkDownloadedFiles();
     } catch (e) {
       debugPrint("Failed loading group messages: $e");
     }
@@ -449,19 +451,21 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
       if (oldestMsg.id == null) return;
 
       final moreMessages = await ApiService.getGroupMessages(widget.selectedGroup!.id, beforeId: oldestMsg.id);
-      if (mounted) {
-        setState(() {
-          if (moreMessages.isEmpty) {
-            _hasMoreMessages = false;
-          } else {
-            _chatMessages.addAll(moreMessages.reversed);
-            _hasMoreMessages = moreMessages.length >= 15;
-          }
-        });
-      }
-      if (moreMessages.isNotEmpty) {
-        _cacheService.cacheMessages(widget.selectedGroup!.id, moreMessages);
-        _checkDownloadedFiles();
+      if (moreMessages != null) {
+        if (mounted) {
+          setState(() {
+            if (moreMessages.isEmpty) {
+              _hasMoreMessages = false;
+            } else {
+              _chatMessages.addAll(moreMessages.reversed);
+              _hasMoreMessages = moreMessages.length >= 15;
+            }
+          });
+        }
+        if (moreMessages.isNotEmpty) {
+          _cacheService.cacheMessages(widget.selectedGroup!.id, moreMessages);
+          _checkDownloadedFiles();
+        }
       }
     } catch (e) {
       debugPrint("Error loading more messages: $e");

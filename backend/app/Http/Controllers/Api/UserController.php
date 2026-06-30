@@ -177,4 +177,69 @@ class UserController extends Controller
             'user' => $user
         ]);
     }
+
+    /**
+     * Backup database and stream it to the user.
+     */
+    public function backupDatabase(Request $request)
+    {
+        $tables = [];
+        $result = \DB::select("SHOW TABLES");
+        
+        $dbName = env('DB_DATABASE', 'real_db');
+        
+        foreach ($result as $row) {
+            $rowArr = (array)$row;
+            $tableName = reset($rowArr);
+            $tables[] = $tableName;
+        }
+
+        $sql = "-- Database Backup for MyPTT\n";
+        $sql .= "-- Generated: " . now()->toDateTimeString() . "\n\n";
+        $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
+
+        foreach ($tables as $table) {
+            $createTableRes = \DB::select("SHOW CREATE TABLE `{$table}`");
+            if (empty($createTableRes)) continue;
+            $createTableArr = (array)$createTableRes[0];
+            $createTableSql = $createTableArr['Create Table'] ?? $createTableArr['create table'] ?? '';
+            
+            $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
+            $sql .= $createTableSql . ";\n\n";
+
+            $rows = \DB::table($table)->get();
+            if ($rows->count() > 0) {
+                $sql .= "LOCK TABLES `{$table}` WRITE;\n";
+                $sql .= "ALTER TABLE `{$table}` DISABLE KEYS;\n";
+                
+                foreach ($rows as $row) {
+                    $rowArr = (array)$row;
+                    $keys = array_map(function($key) {
+                        return "`{$key}`";
+                    }, array_keys($rowArr));
+                    
+                    $values = array_map(function($value) {
+                        if ($value === null) {
+                            return 'NULL';
+                        }
+                        return "'" . addslashes($value) . "'";
+                    }, array_values($rowArr));
+
+                    $sql .= "INSERT INTO `{$table}` (" . implode(', ', $keys) . ") VALUES (" . implode(', ', $values) . ");\n";
+                }
+                
+                $sql .= "ALTER TABLE `{$table}` ENABLE KEYS;\n";
+                $sql .= "UNLOCK TABLES;\n\n";
+            }
+        }
+
+        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
+
+        $fileName = 'backup_' . now()->format('Y-m-d_H-i-s') . '.sql';
+
+        return response($sql, 200, [
+            'Content-Type' => 'application/octet-stream',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+        ]);
+    }
 }

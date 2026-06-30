@@ -37,6 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // User Management for Admins Only
     Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->group(function () {
+        Route::post('/backup', [\App\Http\Controllers\Api\UserController::class, 'backupDatabase']);
         Route::get('/users', [\App\Http\Controllers\Api\UserController::class, 'index']);
         Route::post('/users', [\App\Http\Controllers\Api\UserController::class, 'store']);
         Route::put('/users/{id}', [\App\Http\Controllers\Api\UserController::class, 'update']);

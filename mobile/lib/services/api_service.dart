@@ -222,7 +222,7 @@ class ApiService {
   }
 
   // ៩. ទាញយកប្រវត្តិសារក្នុងក្រុម (Get Group Messages history)
-  static Future<List<ChatMessage>> getGroupMessages(int groupId, {int? beforeId}) async {
+  static Future<List<ChatMessage>?> getGroupMessages(int groupId, {int? beforeId}) async {
     final headers = await _getHeaders();
     try {
       final url = beforeId != null
@@ -243,15 +243,15 @@ class ApiService {
           return decoded.map((m) => ChatMessage.fromJson(m, currentUsername)).toList();
         } else {
           debugPrint('[API] getGroupMessages unexpected format: ${response.body}');
-          return [];
+          return null;
         }
       } else {
         debugPrint('[API] getGroupMessages error: ${response.statusCode} ${response.body}');
-        return [];
+        return null;
       }
     } catch (e, st) {
       debugPrint('[API] getGroupMessages exception: $e\n$st');
-      return [];
+      return null;
     }
   }
 

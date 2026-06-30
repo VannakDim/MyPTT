@@ -64,6 +64,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showPttButton = prefs.getBool('ptt_show_button') ?? true;
       _chatFontSize = prefs.getDouble('ptt_chat_font_size') ?? 13.0;
       _pttMode = prefs.getString('ptt_press_mode') ?? 'push';
+
+      // Load cached groups and restore selection offline
+      final cachedGroupsStr = prefs.getString('ptt_cached_groups');
+      final selectedGroupId = prefs.getInt('ptt_selected_group_id');
+      if (cachedGroupsStr != null) {
+        try {
+          final List decoded = jsonDecode(cachedGroupsStr);
+          final groups = decoded.map((g) => Group.fromJson(g)).toList();
+          _myGroups = groups;
+          if (selectedGroupId != null) {
+            _selectedGroup = groups.firstWhere((g) => g.id == selectedGroupId, orElse: () => groups.first);
+          } else if (groups.isNotEmpty) {
+            _selectedGroup = groups.first;
+          }
+        } catch (e) {
+          debugPrint("Failed parsing cached groups: $e");
+        }
+      }
     });
     if (_token != null) {
       _fetchGroups();
@@ -89,10 +107,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _fetchGroups() async {
     try {
       final groups = await ApiService.getMyGroups();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ptt_cached_groups', jsonEncode(groups.map((g) => g.toJson()).toList()));
+
       setState(() {
         _myGroups = groups;
         if (groups.isNotEmpty) {
-          _selectedGroup = groups.first;
+          final currentSelectedId = _selectedGroup?.id;
+          final stillExists = groups.any((g) => g.id == currentSelectedId);
+          if (stillExists) {
+            _selectedGroup = groups.firstWhere((g) => g.id == currentSelectedId);
+          } else {
+            _selectedGroup = groups.first;
+          }
+          prefs.setInt('ptt_selected_group_id', _selectedGroup!.id);
+        } else {
+          _selectedGroup = null;
+          prefs.remove('ptt_selected_group_id');
         }
       });
     } catch (e) {
@@ -359,12 +390,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     tileColor: isSelected ? const Color(0xFF1E293B).withOpacity(0.3) : null,
-                    onTap: () {
+                    onTap: () async {
                       setState(() {
                         _selectedGroup = g;
                         _currentView = 'chat';
                       });
-                      Navigator.pop(context);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setInt('ptt_selected_group_id', g.id);
+                      if (context.mounted) Navigator.pop(context);
                     },
                   );
                 },

@@ -30,6 +30,13 @@
             >
               📻 គ្រប់គ្រងប៉ុស្តិ៍
             </button>
+            <button 
+              @click="triggerBackup" 
+              :disabled="backingUp"
+              class="tab-btn backup-btn"
+            >
+              💾 {{ backingUp ? 'កំពុង Backup...' : 'Backup ទិន្នន័យ' }}
+            </button>
           </div>
 
           <!-- User Clickable Profile Avatar Dropdown -->
@@ -376,6 +383,46 @@ const handleLogout = () => {
   showDropdown.value = false;
   localStorage.clear();
 };
+
+const backingUp = ref(false);
+
+const triggerBackup = async () => {
+  if (backingUp.value) return;
+  backingUp.value = true;
+  try {
+    const response = await axios.post(`${import.meta.env.VITE_LARAVEL_API_URL}/api/backup`, {}, {
+      headers: {
+        'Authorization': `Bearer ${token.value}`,
+        'Accept': 'application/json'
+      },
+      responseType: 'blob'
+    });
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const contentDisposition = response.headers['content-disposition'];
+    let fileName = `backup_${new Date().toISOString().slice(0, 10)}.sql`;
+    if (contentDisposition) {
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (fileNameMatch && fileNameMatch[1]) {
+        fileName = fileNameMatch[1];
+      }
+    }
+    
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Backup failed:", err);
+    alert("⚠️ ការ Backup ទិន្នន័យបានបរាជ័យ!");
+  } finally {
+    backingUp.value = false;
+  }
+};
 </script>
 
 <style>
@@ -449,6 +496,21 @@ body {
   background: #3498db;
   color: white;
   box-shadow: 0 2px 8px rgba(52, 152, 219, 0.4);
+}
+
+.backup-btn {
+  background: #10B981 !important;
+  color: white !important;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+.backup-btn:hover {
+  background: #059669 !important;
+}
+.backup-btn:disabled {
+  background: #6b7280 !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
 }
 
 .user-actions {
