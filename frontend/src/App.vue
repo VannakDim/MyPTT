@@ -24,6 +24,12 @@
             >
               👥 គ្រប់គ្រងអ្នកប្រើប្រាស់
             </button>
+            <button 
+              @click="currentTab = 'groups'" 
+              :class="['tab-btn', currentTab === 'groups' ? 'active' : '']"
+            >
+              📻 គ្រប់គ្រងប៉ុស្តិ៍
+            </button>
           </div>
 
           <!-- User Clickable Profile Avatar Dropdown -->
@@ -52,6 +58,7 @@
       <div class="content-body">
         <PttConsole v-if="currentTab === 'console'" :userToken="token" />
         <UserManagement v-else-if="currentTab === 'users' && role === 'admin'" :userToken="token" />
+        <GroupManagement v-else-if="currentTab === 'groups' && role === 'admin'" :userToken="token" />
       </div>
     </div>
 
@@ -163,6 +170,7 @@ import axios from 'axios';
 import LoginCard from './components/LoginCard.vue';
 import PttConsole from './components/PttConsole.vue';
 import UserManagement from './components/UserManagement.vue';
+import GroupManagement from './components/GroupManagement.vue';
 
 // ទាញយកទិន្នន័យពី LocalStorage (បើមានស្រាប់)
 const token = ref(localStorage.getItem('ptt_token') || '');

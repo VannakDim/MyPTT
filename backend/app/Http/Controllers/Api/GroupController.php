@@ -32,4 +32,63 @@ class GroupController extends Controller
         // Return ជា plain array ផ្ទាល់ (ងាយ parse ក្នុង Flutter)
         return response()->json($members);
     }
+
+    // ៣. បង្កើតក្រុមថ្មី (សម្រាប់ Admin)
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:groups,name',
+            'display_name' => 'required|string|max:255',
+        ]);
+
+        $group = Group::create([
+            'name' => $request->name,
+            'display_name' => $request->display_name,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'group' => $group
+        ], 201);
+    }
+
+    // ៤. កែប្រែព័ត៌មានក្រុម (សម្រាប់ Admin)
+    public function update(Request $request, $id)
+    {
+        $group = Group::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255|unique:groups,name,' . $group->id,
+            'display_name' => 'required|string|max:255',
+        ]);
+
+        $group->update([
+            'name' => $request->name,
+            'display_name' => $request->display_name,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'group' => $group
+        ]);
+    }
+
+    // ៥. លុបក្រុម (សម្រាប់ Admin)
+    public function destroy($id)
+    {
+        $group = Group::findOrFail($id);
+
+        // Detach all users first (pivot table cleanup)
+        $group->users()->detach();
+        
+        // Also delete messages related to this group
+        $group->messages()->delete();
+        
+        $group->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'លុបក្រុមបានជោគជ័យ'
+        ]);
+    }
 }

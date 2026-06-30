@@ -118,7 +118,7 @@ class UserController extends Controller
      */
     public function getGroups()
     {
-        return response()->json(Group::all());
+        return response()->json(Group::withCount('users')->get());
     }
 
     /**

@@ -41,5 +41,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/users/{id}', [\App\Http\Controllers\Api\UserController::class, 'update']);
         Route::delete('/users/{id}', [\App\Http\Controllers\Api\UserController::class, 'destroy']);
         Route::get('/all-groups', [\App\Http\Controllers\Api\UserController::class, 'getGroups']);
+        Route::post('/groups', [\App\Http\Controllers\Api\GroupController::class, 'store']);
+        Route::put('/groups/{id}', [\App\Http\Controllers\Api\GroupController::class, 'update']);
+        Route::delete('/groups/{id}', [\App\Http\Controllers\Api\GroupController::class, 'destroy']);
     });
 });
