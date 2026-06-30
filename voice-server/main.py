@@ -120,10 +120,16 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
     await manager.connect(channel, websocket, username, user_id)
     await manager.broadcast_text(channel, {"type": "system", "message": f"🔔 {username} បានចូលក្នុងបន្ទប់"})
 
+    disconnected = False  # ទង់សញ្ញាដើម្បីការពារ disconnect ពីរដង
+
     try:
         while True:
             packet = await websocket.receive()
-            
+
+            # ពិនិត្យ disconnect message ភ្លាមដោយផ្ទាល់ (type == "websocket.disconnect")
+            if packet.get("type") == "websocket.disconnect":
+                break
+
             # ទទួលកញ្ចប់សំឡេង (Binary)
             if "bytes" in packet:
                 await manager.broadcast_audio(channel, websocket, packet["bytes"])
@@ -271,13 +277,16 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                     })
 
     except WebSocketDisconnect:
-        disconnect_res = await manager.disconnect(channel, websocket)
-        if disconnect_res:
-            await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
-        await manager.broadcast_text(channel, {"type": "system", "message": f"🚶 {username} បានចាកចេញ"})
-        
+        pass  # គ្រប់គ្រងក្នុង finally block
+
     except Exception as e:
-        print(f"Error encountered: {e}")
-        disconnect_res = await manager.disconnect(channel, websocket)
-        if disconnect_res:
-            await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
+        print(f"[WS Error] {username}: {e}")
+
+    finally:
+        # Cleanup ត្រូវតែដំណើរការតែម្ដងប៉ុណ្ណោះ (ការពារ double-disconnect)
+        if not disconnected:
+            disconnected = True
+            disconnect_res = await manager.disconnect(channel, websocket)
+            if disconnect_res:
+                await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
+            await manager.broadcast_text(channel, {"type": "system", "message": f"🚶 {username} បានចាកចេញ"})

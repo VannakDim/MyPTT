@@ -59,7 +59,15 @@ class ChannelManager:
         
         for ws_conn, uid in list(self.ws_to_user_id.items()):
             if uid == user_id and ws_conn != websocket:
-                # ផ្ញើសារប្រាប់ឧបករណ៍ចាស់
+                # លុបចេញពីចង្កោម មុន ផ្ញើ force_logout
+                # ដើម្បីការពារ receive() loop ចាស់ thread ពីការ call disconnect() ម្ដងទៀត
+                self.ws_to_user_id.pop(ws_conn, None)
+                for ch in list(self.channels.keys()):
+                    if ws_conn in self.channels[ch]["users"]:
+                        del self.channels[ch]["users"][ws_conn]
+                        await self.update_user_count(ch)
+
+                # ផ្ញើសារប្រាប់ឧបករណ៍ចាស់ រួចបិទ
                 try:
                     await ws_conn.send_text(json.dumps({
                         "type": "force_logout",
@@ -69,13 +77,7 @@ class ChannelManager:
                     }))
                     await ws_conn.close(code=4009)
                 except Exception:
-                    pass
-                # លុបចេញពីចង្កោមចាស់ភ្លាម
-                self.ws_to_user_id.pop(ws_conn, None)
-                for ch in list(self.channels.keys()):
-                    if ws_conn in self.channels[ch]["users"]:
-                        del self.channels[ch]["users"][ws_conn]
-                        await self.update_user_count(ch)
+                    pass  # WebSocket ប្រហែលជា disconnect រួចហើយ
 
         self.ws_to_user_id[websocket] = user_id
         if channel not in self.channels:
