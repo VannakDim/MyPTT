@@ -39,6 +39,7 @@ class ApiService {
     if (response.statusCode == 200 && data['status'] == 'success') {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('ptt_token', data['token']);
+      await prefs.setInt('ptt_user_id', data['user']['id']);
       await prefs.setString('ptt_username', data['user']['name']);
       await prefs.setString('ptt_email', data['user']['email']);
       await prefs.setString('ptt_role', data['user']['role'] ?? 'user');
@@ -93,6 +94,24 @@ class ApiService {
       return list.map((g) => Group.fromJson(g)).toList();
     }
     return [];
+  }
+
+  // ៣b. ទាញយកព័ត៌មាន User បច្ចុប្បន្ន (Get Current User Profile)
+  static Future<User?> getCurrentUser() async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/user'),
+        headers: headers,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return User.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint("Error fetching current user: $e");
+    }
+    return null;
   }
 
   // ៤. [Admin] ទាញយកបញ្ជីអ្នកប្រើប្រាស់ទាំងអស់ (List Users)

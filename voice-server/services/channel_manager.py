@@ -172,6 +172,11 @@ class ChannelManager:
             for user_ws in self.channels[channel]["users"].keys():
                 asyncio.create_task(safe_send(user_ws))
 
+    async def broadcast_global(self, data_dict: dict):
+        """ ផ្ញើសារអក្សរទៅកាន់សមាជិកទាំងអស់នៅគ្រប់បន្ទប់ (Global Broadcast) """
+        for channel in list(self.channels.keys()):
+            await self.broadcast_text(channel, data_dict)
+
     async def send_audio_to_user(self, channel: str, target_username: str, audio_bytes: bytes):
         """ ផ្ញើកញ្ចប់សំឡេងចំគោលដៅទៅកាន់ User ម្នាក់ (private call audio – មិន broadcast) """
         if channel in self.channels:

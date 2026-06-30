@@ -642,6 +642,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       showPttButton: _showPttButton,
       pttMode: _pttMode,
       fontSize: _chatFontSize,
+      onRefreshGroups: _fetchGroups,
+      onRefreshUser: (updatedUser) async {
+        setState(() {
+          _username = updatedUser.name;
+          _email = updatedUser.email;
+          _avatarStr = updatedUser.avatar ?? '';
+          _role = updatedUser.role;
+        });
+      },
     );
   }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Group;
 use Illuminate\Http\Request;
+use App\Helpers\VoiceServer;
 
 class GroupController extends Controller
 {
@@ -46,6 +47,12 @@ class GroupController extends Controller
             'display_name' => $request->display_name,
         ]);
 
+        VoiceServer::broadcast([
+            'type' => 'groups_update',
+            'group_id' => $group->id,
+            'action' => 'created'
+        ]);
+
         return response()->json([
             'status' => 'success',
             'group' => $group
@@ -67,6 +74,12 @@ class GroupController extends Controller
             'display_name' => $request->display_name,
         ]);
 
+        VoiceServer::broadcast([
+            'type' => 'groups_update',
+            'group_id' => $group->id,
+            'action' => 'updated'
+        ]);
+
         return response()->json([
             'status' => 'success',
             'group' => $group
@@ -84,7 +97,14 @@ class GroupController extends Controller
         // Also delete messages related to this group
         $group->messages()->delete();
         
+        $groupId = $group->id;
         $group->delete();
+
+        VoiceServer::broadcast([
+            'type' => 'groups_update',
+            'group_id' => $groupId,
+            'action' => 'deleted'
+        ]);
 
         return response()->json([
             'status' => 'success',

@@ -290,3 +290,13 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
             if disconnect_res:
                 await process_voice_message(channel, disconnect_res["speaker"], disconnect_res["audio_bytes"])
             await manager.broadcast_text(channel, {"type": "system", "message": f"🚶 {username} បានចាកចេញ"})
+
+@app.post("/api/broadcast")
+async def broadcast_api(payload: dict, secret: str = Query(None)):
+    expected_secret = os.getenv("VOICE_SERVER_SECRET", "myptt_super_secret_key")
+    if secret != expected_secret:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    await manager.broadcast_global(payload)
+    return {"status": "broadcast_queued"}

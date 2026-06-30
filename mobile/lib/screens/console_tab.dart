@@ -34,6 +34,8 @@ class ConsoleTab extends StatefulWidget {
   final bool showPttButton;
   final String pttMode;
   final double fontSize;
+  final VoidCallback? onRefreshGroups;
+  final Function(User)? onRefreshUser;
 
   const ConsoleTab({
     super.key,
@@ -44,6 +46,8 @@ class ConsoleTab extends StatefulWidget {
     required this.showPttButton,
     required this.pttMode,
     this.fontSize = 13.0,
+    this.onRefreshGroups,
+    this.onRefreshUser,
   });
 
   @override
@@ -423,6 +427,47 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           // Unused - PTT uses WebSocket PCM bytes
         } else if (type == 'call_signal') {
           _handleCallSignal(frame);
+        } else if (type == 'user_update') {
+          final dynamic rawUserId = frame['user_id'];
+          final String action = frame['action'] ?? '';
+          final prefs = await SharedPreferences.getInstance();
+          final currentUserId = prefs.getInt('ptt_user_id');
+
+          if (currentUserId != null && currentUserId.toString() == rawUserId.toString()) {
+            if (action == 'deleted') {
+              _showForceLogoutDialog("គណនីរបស់អ្នកត្រូវបានលុបដោយអ្នកគ្រប់គ្រង (Admin)។");
+            } else if (action == 'updated') {
+              final updatedUser = await ApiService.getCurrentUser();
+              if (updatedUser != null) {
+                await prefs.setString('ptt_username', updatedUser.name);
+                await prefs.setString('ptt_email', updatedUser.email);
+                await prefs.setString('ptt_avatar', updatedUser.avatar ?? '');
+                await prefs.setString('ptt_role', updatedUser.role);
+
+                if (widget.onRefreshUser != null) {
+                  widget.onRefreshUser!(updatedUser);
+                }
+
+                setState(() {
+                  _currentUsername = updatedUser.name;
+                });
+                _addLog("🔔 ព័ត៌មានគណនីរបស់អ្នកត្រូវបានកែប្រែដោយអ្នកគ្រប់គ្រង។");
+              }
+            }
+          }
+
+          if (widget.onRefreshGroups != null) {
+            widget.onRefreshGroups!();
+          }
+        } else if (type == 'groups_update') {
+          if (widget.onRefreshGroups != null) {
+            widget.onRefreshGroups!();
+          }
+          final dynamic rawGroupId = frame['group_id'];
+          final String action = frame['action'] ?? '';
+          if (widget.selectedGroup != null && widget.selectedGroup!.id.toString() == rawGroupId.toString() && action == 'deleted') {
+            _addLog("⚠️ ប៉ុស្តិ៍វិទ្យុដែលអ្នកកំពុងស្ថិតនៅត្រូវបានលុបដោយអ្នកគ្រប់គ្រង។");
+          }
         }
       } catch (e) {
         debugPrint("WS JSON Decode error: $e");

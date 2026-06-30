@@ -8,6 +8,7 @@ use App\Models\Group;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use App\Helpers\VoiceServer;
 
 class UserController extends Controller
 {
@@ -44,6 +45,12 @@ class UserController extends Controller
         if ($request->has('groups')) {
             $user->groups()->sync($request->groups);
         }
+
+        VoiceServer::broadcast([
+            'type' => 'user_update',
+            'user_id' => $user->id,
+            'action' => 'created'
+        ]);
 
         return response()->json([
             'status' => 'success',
@@ -82,6 +89,12 @@ class UserController extends Controller
             $user->groups()->sync($request->groups);
         }
 
+        VoiceServer::broadcast([
+            'type' => 'user_update',
+            'user_id' => $user->id,
+            'action' => 'updated'
+        ]);
+
         return response()->json([
             'status' => 'success',
             'user' => $user->load('groups')
@@ -105,7 +118,15 @@ class UserController extends Controller
 
         // Detach groups first (pivot table cleanup)
         $user->groups()->detach();
+        
+        $userId = $user->id;
         $user->delete();
+
+        VoiceServer::broadcast([
+            'type' => 'user_update',
+            'user_id' => $userId,
+            'action' => 'deleted'
+        ]);
 
         return response()->json([
             'status' => 'success',
@@ -144,6 +165,12 @@ class UserController extends Controller
         }
 
         $user->save();
+
+        VoiceServer::broadcast([
+            'type' => 'user_update',
+            'user_id' => $user->id,
+            'action' => 'updated'
+        ]);
 
         return response()->json([
             'status' => 'success',
