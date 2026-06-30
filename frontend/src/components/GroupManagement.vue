@@ -220,6 +220,8 @@ onMounted(() => {
 
 <style scoped>
 .group-management-card {
+  width: 100%;
+  max-width: 1024px;
   background: white;
   padding: 30px;
   border-radius: 8px;
