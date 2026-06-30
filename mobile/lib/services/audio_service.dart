@@ -176,7 +176,7 @@ class AudioService {
     await _recorder!.startRecorder(
       toStream: _recordingStreamController!.sink,
       codec: Codec.pcm16,
-      audioSource: AudioSource.voice_communication,
+      audioSource: AudioSource.microphone, // ប្រើប្រាស់ microphone ធម្មតាដើម្បីជៀសវាង hardware echo canceler កាត់សំឡេងដំបូងៗឱ្យរអាក់រអួល
       numChannels: 1,
       sampleRate: 16000,
     );

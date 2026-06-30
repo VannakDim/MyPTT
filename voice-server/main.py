@@ -61,6 +61,24 @@ def save_message_to_laravel_sync(payload):
 def save_message_to_laravel(payload):
     asyncio.create_task(asyncio.to_thread(save_message_to_laravel_sync, payload))
 
+def save_message_seen_to_laravel_sync(payload):
+    auth_url = os.getenv("LARAVEL_AUTH_URL", "http://localhost:8000/api/user")
+    base_url = auth_url.split("/api/user")[0] if "/api/user" in auth_url else "http://localhost:8000"
+    laravel_url = f"{base_url}/api/messages/seen"
+    headers = {
+        "X-Voice-Server-Secret": os.getenv("VOICE_SERVER_SECRET", "myptt_super_secret_key"),
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    try:
+        response = requests.post(laravel_url, json=payload, headers=headers, timeout=10)
+        print(f"[Laravel Save Seen] Status: {response.status_code}")
+    except Exception as e:
+        print(f"[Laravel Save Seen Error] Failed: {e}")
+
+def save_message_seen_to_laravel(payload):
+    asyncio.create_task(asyncio.to_thread(save_message_seen_to_laravel_sync, payload))
+
 async def process_voice_message(channel_name, speaker, audio_bytes):
     if not audio_bytes or len(audio_bytes) < 16000:
         print(f"[Voice Skip] Too short: {len(audio_bytes) if audio_bytes else 0} bytes")
@@ -200,6 +218,21 @@ async def websocket_endpoint(websocket: WebSocket, channel: str, token: str = Qu
                         broadcast_payload["reply_to"] = reply_to
 
                     await manager.broadcast_text(channel, broadcast_payload)
+
+                elif action == "message_seen":
+                    message_ids = data.get("ids", [])
+                    if message_ids:
+                        save_payload = {
+                            "message_ids": message_ids,
+                            "user_id": user_id
+                        }
+                        save_message_seen_to_laravel(save_payload)
+                        await manager.broadcast_text(channel, {
+                            "type": "message_seen",
+                            "message_ids": message_ids,
+                            "username": username,
+                            "user_id": user_id
+                        })
 
                 # --- មុខងារផ្ញើ File ---
                 elif action == "file_share":

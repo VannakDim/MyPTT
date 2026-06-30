@@ -145,6 +145,7 @@ class MessageController extends Controller
                 'replyTo' => function ($q) {
                     $q->select('id', 'sender_name', 'text', 'type', 'file_name');
                 },
+                'seenBy',
             ])
             ->orderBy('id', 'desc')
             ->limit(15)
@@ -315,6 +316,55 @@ class MessageController extends Controller
             'message' => 'Messages deleted successfully',
             'deleted_ids' => $deletedIds,
         ]);
+    }
+
+    /**
+     * API for marking messages as seen/read.
+     */
+    public function markSeen(Request $request)
+    {
+        $isAuth = false;
+        $user = null;
+
+        if (auth()->guard('sanctum')->check()) {
+            $user = auth()->guard('sanctum')->user();
+            $isAuth = true;
+        } else {
+            $secret = $request->header('X-Voice-Server-Secret');
+            $expectedSecret = env('VOICE_SERVER_SECRET', 'myptt_super_secret_key');
+            if ($secret && $secret === $expectedSecret) {
+                $isAuth = true;
+            }
+        }
+
+        if (!$isAuth) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $request->validate([
+            'message_ids' => 'required|array',
+            'message_ids.*' => 'integer',
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $messageIds = $request->message_ids;
+        $userId = $request->user_id;
+
+        $insertData = [];
+        $now = now();
+        foreach ($messageIds as $msgId) {
+            $insertData[] = [
+                'message_id' => $msgId,
+                'user_id' => $userId,
+                'seen_at' => $now,
+            ];
+        }
+
+        if (!empty($insertData)) {
+            \DB::table('message_seens')->insertOrIgnore($insertData);
+        }
+
+        return response()->json(['message' => 'Messages marked as seen successfully']);
     }
 }
 

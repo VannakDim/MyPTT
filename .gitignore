@@ -1,2 +1,9 @@
 realptt-all-in-one.tar
 .DS_Store
+__pycache__/
+*.pyc
+voice-server/venv/
+voice-server/__pycache__/
+voice-server/services/__pycache__/
+.idea/
+.vscode/

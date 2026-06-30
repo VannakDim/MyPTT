@@ -32,4 +32,12 @@ class Message extends Model
     {
         return $this->belongsTo(Message::class, 'reply_to_id');
     }
+
+    public function seenBy()
+    {
+        return $this->belongsToMany(User::class, 'message_seens', 'message_id', 'user_id')
+                    ->select('users.id', 'users.name')
+                    ->withPivot('seen_at')
+                    ->withTimestamps();
+    }
 }

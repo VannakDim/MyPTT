@@ -114,7 +114,7 @@ class NotificationService {
       _chatNotificationId,
       '💬 $sender',
       message,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           _chatChannelId,
           'សារជជែក',
@@ -123,6 +123,8 @@ class NotificationService {
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
           playSound: true,
+          enableVibration: true,
+          vibrationPattern: Int64List.fromList([0, 300]),
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,

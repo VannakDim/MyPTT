@@ -9,6 +9,7 @@ class ChatMessage {
   final String? filePath; // public URL path for stored files/voices
   final bool isMe;
   final DateTime? createdAt;
+  final List<String> seenBy;
 
   // Reply fields
   final int? replyToId;
@@ -28,6 +29,7 @@ class ChatMessage {
     this.filePath,
     required this.isMe,
     this.createdAt,
+    this.seenBy = const [],
     this.replyToId,
     this.replyToSender,
     this.replyToText,
@@ -52,6 +54,18 @@ class ChatMessage {
     DateTime? timeVal;
     if (json['created_at'] != null) {
       timeVal = DateTime.tryParse(json['created_at'].toString());
+    }
+
+    // Parse seen_by list
+    final List<String> seenByList = [];
+    if (json['seen_by'] != null && json['seen_by'] is List) {
+      for (final u in json['seen_by']) {
+        if (u is Map && u['name'] != null) {
+          seenByList.add(u['name'].toString());
+        } else if (u is String) {
+          seenByList.add(u);
+        }
+      }
     }
 
     // Parse reply_to from nested object
@@ -83,6 +97,7 @@ class ChatMessage {
       filePath: json['file_path'],
       isMe: senderVal.toLowerCase() == currentUsername.toLowerCase(),
       createdAt: timeVal,
+      seenBy: seenByList,
       replyToId: replyToIdVal,
       replyToSender: replyToSenderVal,
       replyToText: replyToTextVal,
@@ -102,6 +117,7 @@ class ChatMessage {
       'file_data': fileData,
       'file_path': filePath,
       'created_at': createdAt?.toIso8601String(),
+      'seen_by': seenBy,
       'reply_to_id': replyToId,
       'reply_to': replyToSender != null ? {
         'id': replyToId,

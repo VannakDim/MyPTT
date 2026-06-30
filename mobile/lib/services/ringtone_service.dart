@@ -2,6 +2,8 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:vibration/vibration.dart';
 
 /// Plays short audio alerts for:
 /// - Incoming call ring tone (looping beep)
@@ -22,10 +24,29 @@ class RingtoneService {
     debugPrint('[RingtoneService] Initialized');
   }
 
-  /// Play a call ring tone (repeating beep at 880Hz)
+  /// Play a call ring tone using the system's default ringtone (looping) and vibrate
   Future<void> startRinging() async {
-    if (_isRinging || _player == null) return;
+    if (_isRinging) return;
     _isRinging = true;
+    try {
+      await FlutterRingtonePlayer().playRingtone(
+        looping: true,
+        asAlarm: false,
+      );
+      // រំញ័រជារង្វង់រៀងរាល់ការរោទិ៍ (Vibrate pattern: delay 500ms, vibrate 1000ms, repeat)
+      if (await Vibration.hasVibrator() == true) {
+        Vibration.vibrate(pattern: [500, 1000, 500, 1000], repeat: 0);
+      }
+      debugPrint('[RingtoneService] System ringtone and vibration started');
+    } catch (e) {
+      debugPrint('[RingtoneService] startRinging error: $e. Falling back to custom beep.');
+      _playFallbackRinging();
+    }
+  }
+
+  /// Helper to play custom looping beep as fallback
+  Future<void> _playFallbackRinging() async {
+    if (!_isRinging || _player == null) return;
     try {
       final pcm = _generateTone(
         frequency: 880,
@@ -39,25 +60,27 @@ class RingtoneService {
         numChannels: 1,
         sampleRate: 16000,
         whenFinished: () async {
-          // Loop while still ringing
           if (_isRinging) {
             await Future.delayed(const Duration(milliseconds: 400));
-            if (_isRinging) startRinging();
+            if (_isRinging) _playFallbackRinging();
           }
         },
       );
     } catch (e) {
-      debugPrint('[RingtoneService] startRinging error: $e');
+      debugPrint('[RingtoneService] Fallback ringtone error: $e');
     }
   }
 
-  /// Stop the ring tone
+  /// Stop the ring tone and vibration
   Future<void> stopRinging() async {
     _isRinging = false;
     try {
+      await FlutterRingtonePlayer().stop();
+      await Vibration.cancel();
       if (_player?.isPlaying == true) {
         await _player!.stopPlayer();
       }
+      debugPrint('[RingtoneService] Ringtone and vibration stopped');
     } catch (e) {
       debugPrint('[RingtoneService] stopRinging error: $e');
     }
@@ -84,8 +107,17 @@ class RingtoneService {
     }
   }
 
-  /// Play a short "message received" notification beep (two-tone)
+  /// Play a short "message received" notification beep (two-tone) and vibrate
   Future<void> playMessageBeep() async {
+    // ញ័រទូរស័ព្ទមួយខ្សឹបពេលមានសារថ្មី (Vibrate briefly for message)
+    try {
+      if (await Vibration.hasVibrator() == true) {
+        Vibration.vibrate(duration: 300);
+      }
+    } catch (e) {
+      debugPrint('[RingtoneService] Message vibration error: $e');
+    }
+
     if (_player == null) return;
     try {
       final pcm = _generateTwoTone(
@@ -103,7 +135,12 @@ class RingtoneService {
         sampleRate: 16000,
       );
     } catch (e) {
-      debugPrint('[RingtoneService] playMessageBeep error: $e');
+      debugPrint('[RingtoneService] playMessageBeep error: $e. Falling back to system notification sound.');
+      try {
+        await FlutterRingtonePlayer().playNotification();
+      } catch (ne) {
+        debugPrint('[RingtoneService] Fallback system notification sound error: $ne');
+      }
     }
   }
 
@@ -111,6 +148,7 @@ class RingtoneService {
   Future<void> dispose() async {
     _isRinging = false;
     try {
+      await Vibration.cancel();
       await _player?.closePlayer();
     } catch (_) {}
     _player = null;

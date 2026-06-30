@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\GroupController;
 // 1. Route សាធារណៈ (Public Route) មិនទាមទារ Token ទេ ព្រោះប្រើសម្រាប់ Login យក Token
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/messages', [\App\Http\Controllers\Api\MessageController::class, 'store']);
+Route::post('/messages/seen', [\App\Http\Controllers\Api\MessageController::class, 'markSeen']);
 
 // 2. ក្រុម Route ដែលការពារដោយ Sanctum (ទាល់តែមាន Token ទើបហៅបាន)
 Route::middleware('auth:sanctum')->group(function () {

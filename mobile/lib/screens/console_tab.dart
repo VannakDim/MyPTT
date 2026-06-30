@@ -105,6 +105,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   final Set<int> _selectedMessageIds = {};
   final Set<int> _selectedIndexes = {}; // index-based for real-time msgs without id
   
+  bool _showScrollToBottom = false;
+  bool _hasNewIncomingMessage = false;
+  
   final _chatScrollController = ScrollController();
   final _logsScrollController = ScrollController();
 
@@ -249,7 +252,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
         _chatMessages.addAll(cached);
         _hasMoreMessages = cached.length >= 15;
       });
-      _scrollToBottomChat();
+      _scrollToLastReadMessage(groupId);
+      _markMessagesAsSeen(_chatMessages);
       _checkDownloadedFiles();
     }
 
@@ -262,7 +266,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           _isLoadingMore = false;
           _hasMoreMessages = messages.length >= 15;
         });
-        _scrollToBottomChat();
+        _scrollToLastReadMessage(groupId);
+        _markMessagesAsSeen(_chatMessages);
       }
       // ២. រក្សាទុកសារដែលទើបតែទាញយកបានថ្មីៗ ចូលទៅក្នុង cache
       _cacheService.cacheMessages(groupId, messages);
@@ -275,6 +280,160 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
   void _onChatScroll() {
     if (_chatScrollController.position.pixels >= _chatScrollController.position.maxScrollExtent - 400) {
       _loadMoreMessages();
+    }
+
+    if (_chatScrollController.position.pixels <= 50) {
+      if (_showScrollToBottom) {
+        setState(() {
+          _showScrollToBottom = false;
+          _hasNewIncomingMessage = false;
+        });
+      }
+      _saveLastReadMessage();
+    } else if (_chatScrollController.position.pixels > 200) {
+      if (!_showScrollToBottom && _hasNewIncomingMessage) {
+        setState(() {
+          _showScrollToBottom = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveLastReadMessage() async {
+    if (widget.selectedGroup != null && _chatMessages.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final newestId = _chatMessages.first.id;
+      if (newestId != null) {
+        await prefs.setInt('last_read_msg_id_${widget.selectedGroup!.id}', newestId);
+      }
+    }
+  }
+
+  Future<void> _scrollToLastReadMessage(int groupId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastReadId = prefs.getInt('last_read_msg_id_$groupId');
+    if (lastReadId != null && _chatMessages.isNotEmpty) {
+      final index = _chatMessages.indexWhere((m) => m.id == lastReadId);
+      if (index > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_chatScrollController.hasClients) {
+            _chatScrollController.jumpTo(index * 75.0);
+            setState(() {
+              _showScrollToBottom = true;
+            });
+          }
+        });
+      }
+    } else if (_chatMessages.isNotEmpty) {
+      final newestId = _chatMessages.first.id;
+      if (newestId != null) {
+        await prefs.setInt('last_read_msg_id_$groupId', newestId);
+      }
+    }
+  }
+
+  void _markMessagesAsSeen(List<ChatMessage> messages) {
+    if (!_wsService.isConnected || _currentUsername.isEmpty) return;
+    final List<int> unreadIds = [];
+    for (final msg in messages) {
+      if (msg.id != null && !msg.isMe) {
+        final alreadySeen = msg.seenBy.any((name) => name.toLowerCase() == _currentUsername.toLowerCase());
+        if (!alreadySeen) {
+          unreadIds.add(msg.id!);
+        }
+      }
+    }
+    if (unreadIds.isNotEmpty) {
+      debugPrint("[Seen] Sending seen receipt for IDs: $unreadIds");
+      _wsService.sendAction('message_seen', {'ids': unreadIds});
+    }
+  }
+
+  void _showSeenByBottomSheet(ChatMessage msg) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "អ្នកបានអាន (Seen by)",
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      "${msg.seenBy.length} នាក់",
+                      style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Color(0xFF334155), height: 1),
+                const SizedBox(height: 12),
+                if (msg.seenBy.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text(
+                        "មិនទាន់មានអ្នកអាននៅឡើយទេ",
+                        style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                      ),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.3,
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: msg.seenBy.length,
+                      itemBuilder: (context, index) {
+                        final username = msg.seenBy[index];
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Color(0xFF1E293B),
+                            child: Icon(Icons.person, color: Color(0xFF38BDF8), size: 14),
+                          ),
+                          title: Text(
+                            username,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _scrollToBottom() {
+    if (_chatScrollController.hasClients) {
+      _chatScrollController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      setState(() {
+        _showScrollToBottom = false;
+        _hasNewIncomingMessage = false;
+      });
+      _saveLastReadMessage();
     }
   }
 
@@ -374,14 +533,40 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           if (widget.selectedGroup != null) {
             _cacheService.cacheMessages(widget.selectedGroup!.id, [msg]);
           }
-          // Notify only for messages from others
+          // ជូនដំណឹងសំឡេងលុះត្រាតែមកពីអ្នកដទៃ និងមិនមែនកំពុងនិយាយទូរស័ព្ទ (calling)
           if (!msg.isMe) {
-            _ringtoneService.playMessageBeep();
+            if (_callMode == 'idle') {
+              _ringtoneService.playMessageBeep();
+            }
             final preview = msg.text ?? '';
             _notificationService.showChatNotification(
               sender: msg.sender,
               message: preview.length > 80 ? '${preview.substring(0, 80)}...' : preview,
             );
+          }
+
+          // ប្រសិនបើកំពុងអានសារប្រវត្តិខាងលើ (scrolled up) គឺត្រូវបង្ហាញប៊ូតុង និងផ្ដល់ដំណឹងសារថ្មី
+          if (_chatScrollController.hasClients) {
+            if (_chatScrollController.position.pixels > 100) {
+              setState(() {
+                _hasNewIncomingMessage = true;
+                _showScrollToBottom = true;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("💬 សារថ្មីពី ${msg.sender}: ${msg.text ?? 'សារសំឡេង/ឯកសារ'}"),
+                  duration: const Duration(seconds: 2),
+                  action: SnackBarAction(
+                    label: "មើល",
+                    textColor: const Color(0xFF38BDF8),
+                    onPressed: _scrollToBottom,
+                  ),
+                ),
+              );
+            } else {
+              _saveLastReadMessage();
+            }
+            _markMessagesAsSeen([msg]);
           }
         } else if (type == 'delete_message') {
           final dynamic rawId = frame['id'];
@@ -393,6 +578,40 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
             if (widget.selectedGroup != null) {
               _cacheService.cacheMessages(widget.selectedGroup!.id, _chatMessages);
             }
+          }
+        } else if (type == 'message_seen') {
+          final List<dynamic> rawIds = frame['message_ids'] ?? [];
+          final String seenUser = frame['username'] ?? '';
+          if (rawIds.isNotEmpty && seenUser.isNotEmpty) {
+            final List<int> messageIds = rawIds.map((id) => id is int ? id : int.parse(id.toString())).toList();
+            setState(() {
+              for (int i = 0; i < _chatMessages.length; i++) {
+                final msg = _chatMessages[i];
+                if (msg.id != null && messageIds.contains(msg.id)) {
+                  if (!msg.seenBy.contains(seenUser)) {
+                    final updatedSeen = List<String>.from(msg.seenBy)..add(seenUser);
+                    _chatMessages[i] = ChatMessage(
+                      id: msg.id,
+                      sender: msg.sender,
+                      type: msg.type,
+                      text: msg.text,
+                      fileName: msg.fileName,
+                      fileType: msg.fileType,
+                      fileData: msg.fileData,
+                      filePath: msg.filePath,
+                      isMe: msg.isMe,
+                      createdAt: msg.createdAt,
+                      seenBy: updatedSeen,
+                      replyToId: msg.replyToId,
+                      replyToSender: msg.replyToSender,
+                      replyToText: msg.replyToText,
+                      replyToType: msg.replyToType,
+                      replyToFileName: msg.replyToFileName,
+                    );
+                  }
+                }
+              }
+            });
           }
         } else if (type == 'ptt_status') {
           if (_callMode != 'idle') return; // Skip PTT updates during calls!
@@ -575,7 +794,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_chatScrollController.hasClients) {
         _chatScrollController.animateTo(
-          _chatScrollController.position.maxScrollExtent,
+          0.0,
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
         );
@@ -609,22 +828,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     final text = _chatController.text.trim();
     if (text.isEmpty) return;
     final payload = <String, dynamic>{'text': text};
-    if (_replyingTo?.id != null) {
-      payload['reply_to_id'] = _replyingTo!.id;
-      // Embed full reply_to so the broadcast includes it for bubble rendering
-      payload['reply_to'] = {
-        'id': _replyingTo!.id,
-        'sender_name': _replyingTo!.sender,
-        'text': _replyingTo!.text,
-        'type': _replyingTo!.type,
-        'file_name': _replyingTo!.fileName,
-      };
-    }
     _wsService.sendAction("chat_message", payload);
     _chatController.clear();
-    setState(() {
-      _replyingTo = null;
-    });
   }
 
   Future<void> _showSendFileOptions() async {
@@ -1510,12 +1715,29 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           ),
           if (_shouldShowTime(index)) ...[
             const SizedBox(height: 4),
-            Text(
-              _formatMessageTime(msg.createdAt),
-              style: TextStyle(
-                color: Colors.white54, 
-                fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatMessageTime(msg.createdAt),
+                  style: TextStyle(
+                    color: msg.isMe ? Colors.white70 : Colors.white54, 
+                    fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                  ),
+                ),
+                if (msg.isMe && msg.id != null) ...[
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: msg.seenBy.isNotEmpty ? () => _showSeenByBottomSheet(msg) : null,
+                    child: Icon(
+                      msg.seenBy.isNotEmpty ? Icons.done_all_rounded : Icons.check_rounded,
+                      size: 12,
+                      color: msg.seenBy.isNotEmpty ? const Color(0xFF38BDF8) : Colors.white54,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ],
@@ -1583,12 +1805,29 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           ),
           if (_shouldShowTime(index)) ...[
             const SizedBox(height: 4),
-            Text(
-              _formatMessageTime(msg.createdAt),
-              style: TextStyle(
-                color: msg.isMe ? Colors.white70 : Colors.white54,
-                fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatMessageTime(msg.createdAt),
+                  style: TextStyle(
+                    color: msg.isMe ? Colors.white70 : Colors.white54,
+                    fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                  ),
+                ),
+                if (msg.isMe && msg.id != null) ...[
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: msg.seenBy.isNotEmpty ? () => _showSeenByBottomSheet(msg) : null,
+                    child: Icon(
+                      msg.seenBy.isNotEmpty ? Icons.done_all_rounded : Icons.check_rounded,
+                      size: 12,
+                      color: msg.seenBy.isNotEmpty ? const Color(0xFF38BDF8) : Colors.white54,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ],
@@ -1983,10 +2222,12 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
               // Selection top bar (shown when in select mode)
               if (_isSelectMode) _buildSelectionTopBar(),
 
-                  Expanded(
+              Expanded(
                 child: hasChannel
-                    ? ListView.builder(
-                        controller: _chatScrollController,
+                    ? Stack(
+                        children: [
+                          ListView.builder(
+                            controller: _chatScrollController,
                         reverse: true,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         itemCount: _chatMessages.length,
@@ -2044,22 +2285,35 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (msg.replyToSender != null) _buildReplyQuotedBox(msg),
                                       Text(
                                         msg.text ?? '',
                                         style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
                                       ),
                                       if (_shouldShowTime(i)) ...[
                                         const SizedBox(height: 4),
-                                        Align(
-                                          alignment: Alignment.centerRight,
-                                          child: Text(
-                                            _formatMessageTime(msg.createdAt),
-                                            style: TextStyle(
-                                              color: msg.isMe ? Colors.white70 : Colors.white54,
-                                              fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              _formatMessageTime(msg.createdAt),
+                                              style: TextStyle(
+                                                color: msg.isMe ? Colors.white70 : Colors.white54,
+                                                fontSize: widget.fontSize * 0.7 > 9 ? widget.fontSize * 0.7 : 9,
+                                              ),
                                             ),
-                                          ),
+                                            if (msg.isMe && msg.id != null) ...[
+                                              const SizedBox(width: 4),
+                                              GestureDetector(
+                                                onTap: msg.seenBy.isNotEmpty ? () => _showSeenByBottomSheet(msg) : null,
+                                                child: Icon(
+                                                  msg.seenBy.isNotEmpty ? Icons.done_all_rounded : Icons.check_rounded,
+                                                  size: 12,
+                                                  color: msg.seenBy.isNotEmpty ? const Color(0xFF38BDF8) : Colors.white54,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ],
                                     ],
@@ -2137,8 +2391,51 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                             ),
                           );
                         },
-                      )
-                    : const Center(
+                      ),
+                      if (_showScrollToBottom)
+                        Positioned(
+                          bottom: 12,
+                          right: 0,
+                          left: 0,
+                          child: Center(
+                            child: InkWell(
+                              onTap: _scrollToBottom,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0EA5E9),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.4),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _hasNewIncomingMessage ? Icons.mark_chat_unread_rounded : Icons.arrow_downward_rounded,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      _hasNewIncomingMessage ? "សារថ្មី 👇" : "ចុះក្រោម 👇",
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  )
+                : const Center(
                         child: Text(
                           "សូមជ្រើសរើសប៉ុស្តិ៍វិទ្យុដើម្បីចាប់ផ្ដើមការជជែក",
                           style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
@@ -2173,7 +2470,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 ),
               ],
 
-              if (hasChannel) _buildReplyPreviewBar(),
+
 
               if (hasChannel)
                 Padding(
@@ -2591,50 +2888,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildReplyPreviewBar() {
-    if (_replyingTo == null) return const SizedBox.shrink();
-    final preview = _replyingTo!.type == 'voice'
-        ? '🎙️ សារសំឡេង'
-        : _replyingTo!.type == 'file'
-            ? '📎 ${_replyingTo!.fileName ?? 'ឯកសារ'}'
-            : (_replyingTo!.text ?? '');
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-        border: const Border(left: BorderSide(color: Color(0xFF0EA5E9), width: 3)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _replyingTo!.sender,
-                  style: const TextStyle(color: Color(0xFF0EA5E9), fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  preview,
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () => setState(() => _replyingTo = null),
-            child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildSelectionTopBar() {
     return Container(
@@ -2681,39 +2935,7 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildReplyQuotedBox(ChatMessage msg) {
-    final preview = msg.replyToType == 'voice'
-        ? '🎙️ សារសំឡេង'
-        : msg.replyToType == 'file'
-            ? '📎 ${msg.replyToFileName ?? 'ឯកសារ'}'
-            : (msg.replyToText ?? '');
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(8),
-        border: const Border(left: BorderSide(color: Color(0xFF38BDF8), width: 3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            msg.replyToSender ?? '',
-            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            preview,
-            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
+
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
