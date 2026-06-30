@@ -559,7 +559,10 @@ onMounted(() => {
   color: #4a5568;
 }
 
-.form-group input, .select-role {
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"],
+.select-role {
   width: 100%;
   padding: 10px;
   border: 1px solid #cbd5e0;
@@ -568,8 +571,17 @@ onMounted(() => {
   box-sizing: border-box;
   outline: none;
 }
-.form-group input:focus, .select-role:focus {
+.form-group input[type="text"]:focus,
+.form-group input[type="email"]:focus,
+.form-group input[type="password"]:focus,
+.select-role:focus {
   border-color: #3498db;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
 }
 
 .groups-checkbox-list {
