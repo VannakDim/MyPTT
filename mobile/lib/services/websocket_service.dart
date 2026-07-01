@@ -2,9 +2,24 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class WebSocketService {
-  static const String wsUrl = "wss://api-ptt.stpmtelecom.com"; // Production
-  // static const String wsUrl = "ws://192.168.100.11:9000"; // Localhost (192.168.100.11)
+  static String _customWsUrl = "ws://10.10.60.116:9005";
+
+  static String get wsUrl => _customWsUrl;
+
+  static void updateWsUrl(String newWsUrl) {
+    _customWsUrl = newWsUrl;
+  }
+
+  static Future<void> loadSavedWsUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedWsUrl = prefs.getString('websocket_url');
+    if (savedWsUrl != null && savedWsUrl.isNotEmpty) {
+      _customWsUrl = savedWsUrl;
+    }
+  }
 
   WebSocketChannel? _channel;
   bool isConnected = false;

@@ -17,14 +17,17 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // បង្កើត User គំរូមួយសម្រាប់សាកល្បង Login
-        User::create(
-        [
-            'name' => 'Admin',
-            'email' => 'admin@realptt.com',
-            'password' => Hash::make('password123'), // Password សម្រាប់ Login
-            'role' => 'admin',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@st.com'],
+            [
+                'name' => 'Admin',
+                'password' => Hash::make('123456'), // Password សម្រាប់ Login
+                'role' => 'admin',
+            ]
+        );
 
-        print("\n✅ User តេស្តត្រូវបានបង្កើតជោគជ័យ! (Email: test@realptt.com | Pass: password123)\n");
+        $this->call(RealPttSeeder::class);
+
+        print("\n✅ User តេស្តត្រូវបានបង្កើតជោគជ័យ! (Email: admin@st.com | Pass: 123456)\n");
     }
 }

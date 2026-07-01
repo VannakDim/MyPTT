@@ -11,6 +11,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _serverController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -27,9 +28,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
+    final server = prefs.getString('server_address') ?? '10.10.60.116';
     final email = prefs.getString('saved_email');
     final password = prefs.getString('saved_password');
     final remember = prefs.getBool('remember_me') ?? false;
+
+    setState(() {
+      _serverController.text = server;
+    });
 
     if (remember && email != null && password != null) {
       setState(() {
@@ -60,6 +66,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    // Update the API and WebSocket base URLs dynamically
+    await ApiService.updateBaseUrl(_serverController.text.trim());
 
     final result = await ApiService.login(
       _emailController.text.trim(),
@@ -134,6 +143,34 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
+
+                  // Server Address (IP / Domain) Text Field
+                  TextFormField(
+                    controller: _serverController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "Server Host / IP Address",
+                      labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                      prefixIcon: const Icon(Icons.dns_outlined, color: Color(0xFF38BDF8)),
+                      helperText: "ឧទាហរណ៍៖ 10.10.60.116 ឬ api-ptt.stpmtelecom.com",
+                      helperStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Color(0xFF334155)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Color(0xFF38BDF8)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF1E293B).withOpacity(0.5),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.isEmpty) return "សូមបញ្ចូល IP ឬ Domain របស់ Server";
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
 
                   // Email Text Field
                   TextFormField(
@@ -277,6 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _serverController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

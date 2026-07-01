@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/api_service.dart';
+import 'services/websocket_service.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'dart:async';
 import 'dart:ui';
@@ -349,8 +351,10 @@ class _OverlayFloatingPttButtonState extends State<OverlayFloatingPttButton> {
   }
 }
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ApiService.loadSavedBaseUrl();
+  await WebSocketService.loadSavedWsUrl();
   runApp(const CamboComApp());
 }
 

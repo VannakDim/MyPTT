@@ -18,11 +18,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    allowedHosts: ['ptt.stpmtelecom.com'],
-    hmr: {
-      protocol: 'wss',
-      host: 'ptt.stpmtelecom.com',
-      clientPort: 443,
-    },
+    allowedHosts: ['ptt.stpmtelecom.com', 'localhost', '127.0.0.1'],
+    // hmr: {
+    //   protocol: 'wss',
+    //   host: 'ptt.stpmtelecom.com',
+    //   clientPort: 443,
+    // },
   },
 })

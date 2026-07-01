@@ -103,7 +103,12 @@
           </div>
           <p v-if="msg.type === 'chat'" class="msg-text">
             <span>{{ msg.text }}</span>
-            <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+            <span v-if="shouldShowTime(msg, i)" class="msg-time">
+              {{ formatMessageTime(msg) }}
+              <span v-if="getMessageSenderName(msg) === username && msg.id" class="msg-seen" :class="{ 'is-seen': hasSeen(msg) }">
+                {{ hasSeen(msg) ? ' ✓✓' : ' ✓' }}
+              </span>
+            </span>
             <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
           </p>
           <div v-else-if="msg.type === 'file'" class="msg-file">
@@ -113,7 +118,12 @@
                 📁 ឯកសារ៖ {{ msg.file_name }}
               </a>
               <span v-else class="image-name">{{ msg.file_name }}</span>
-              <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <span v-if="shouldShowTime(msg, i)" class="msg-time">
+                {{ formatMessageTime(msg) }}
+                <span v-if="getMessageSenderName(msg) === username && msg.id" class="msg-seen" :class="{ 'is-seen': hasSeen(msg) }">
+                  {{ hasSeen(msg) ? ' ✓✓' : ' ✓' }}
+                </span>
+              </span>
               <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
             </div>
           </div>
@@ -122,7 +132,12 @@
               <button @click="playVoice(getFileUrl(msg))" class="voice-btn">
                 {{ playingUrl === getFileUrl(msg) ? '⏸️ កំពុងចាក់...' : '🔊 សារសំឡេង PTT' }}
               </button>
-              <span v-if="shouldShowTime(msg, i)" class="msg-time">{{ formatMessageTime(msg) }}</span>
+              <span v-if="shouldShowTime(msg, i)" class="msg-time">
+                {{ formatMessageTime(msg) }}
+                <span v-if="getMessageSenderName(msg) === username && msg.id" class="msg-seen" :class="{ 'is-seen': hasSeen(msg) }">
+                  {{ hasSeen(msg) ? ' ✓✓' : ' ✓' }}
+                </span>
+              </span>
               <button v-if="getMessageSenderName(msg) === username && msg.id" @click="deleteMessage(msg)" class="delete-msg-btn" title="លុបសារ">🗑️</button>
             </div>
           </div>
@@ -220,6 +235,24 @@ const getMessageSenderAvatar = (msg) => {
   }
   const user = allRegisteredUsers.value.find(u => String(u.name).toLowerCase() === String(name).toLowerCase());
   return user ? user.avatar : null;
+};
+
+const hasSeen = (msg) => {
+  const list = msg.seen_by || msg.seenBy;
+  if (!list || !Array.isArray(list)) return false;
+  return list.some(u => {
+    const uName = (u && typeof u === 'object') ? u.name : u;
+    return String(uName).toLowerCase() !== String(username).toLowerCase();
+  });
+};
+
+const sendSeen = (ids) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      action: 'message_seen',
+      ids: ids
+    }));
+  }
 };
 
 const formatMessageTime = (msg) => {
@@ -524,7 +557,16 @@ const connectWS = () => {
   systemStatus.value = "Connecting...";
   ws = new WebSocket(`${import.meta.env.VITE_FASTAPI_WS_URL}/ws/${currentChannelName.value}?token=${props.userToken}`);
   
-  ws.onopen = () => { systemStatus.value = "Connected"; };
+  ws.onopen = () => {
+    systemStatus.value = "Connected";
+    // Mark loaded messages as seen
+    const unreadIds = chatMessages.value
+      .filter(msg => getMessageSenderName(msg) !== username && msg.id && !hasSeen(msg))
+      .map(msg => msg.id);
+    if (unreadIds.length > 0) {
+      sendSeen(unreadIds);
+    }
+  };
   ws.onmessage = async (event) => {
     if (event.data instanceof Blob) {
       playAudio(event.data);
@@ -569,9 +611,32 @@ const connectWS = () => {
             data.created_at = new Date().toISOString();
           }
           chatMessages.value.push(data);
+          
+          if (getMessageSenderName(data) !== username && data.id) {
+            sendSeen([data.id]);
+          }
+
           await nextTick(); 
           if (chatRef.value) chatRef.value.scrollTop = chatRef.value.scrollHeight;
         } 
+        else if (data && data.type === 'message_seen') {
+          const messageIds = data.message_ids || [];
+          const seenUser = data.username || '';
+          if (messageIds.length > 0 && seenUser) {
+            chatMessages.value.forEach(msg => {
+              if (msg.id && messageIds.includes(msg.id)) {
+                if (!msg.seen_by) msg.seen_by = [];
+                const exists = msg.seen_by.some(u => {
+                  const uName = (u && typeof u === 'object') ? u.name : u;
+                  return String(uName).toLowerCase() === seenUser.toLowerCase();
+                });
+                if (!exists) {
+                  msg.seen_by.push(seenUser);
+                }
+              }
+            });
+          }
+        }
         else if (data && data.type === 'delete_message') {
           chatMessages.value = chatMessages.value.filter(msg => Number(msg.id) !== Number(data.id));
         }
@@ -1080,6 +1145,15 @@ onUnmounted(() => { closeConnection(); window.removeEventListener('beforeunload'
 }
 .msg-me .msg-time {
   color: #638253;
+}
+.msg-seen {
+  font-size: 10px;
+  color: #8c9094;
+  margin-left: 2px;
+  font-weight: bold;
+}
+.msg-seen.is-seen {
+  color: #38bdf8;
 }
 .delete-msg-btn {
   background: none;

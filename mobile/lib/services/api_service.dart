@@ -4,10 +4,66 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.model.dart';
 import '../models/chat_message.model.dart';
-
+import 'websocket_service.dart';
 class ApiService {
-  static const String baseUrl = "https://api-ptt.stpmtelecom.com"; // Production
-  // static const String baseUrl = "http://192.168.100.11:8000"; // Localhost (192.168.100.11)
+  static String _customBaseUrl = "http://10.10.60.116:8000";
+
+  static String get baseUrl => _customBaseUrl;
+
+  static Future<void> updateBaseUrl(String serverAddress) async {
+    final prefs = await SharedPreferences.getInstance();
+    String parsedBaseUrl;
+    String parsedWsUrl;
+
+    if (serverAddress.startsWith('http://') || serverAddress.startsWith('https://')) {
+      parsedBaseUrl = serverAddress;
+      if (serverAddress.startsWith('https://')) {
+        parsedWsUrl = serverAddress.replaceFirst('https://', 'wss://');
+      } else {
+        parsedWsUrl = serverAddress.replaceFirst('http://', 'ws://');
+        if (parsedWsUrl.contains(':8000')) {
+          parsedWsUrl = parsedWsUrl.replaceFirst(':8000', ':9005');
+        }
+      }
+    } else {
+      if (serverAddress.contains('stpmtelecom.com') || 
+          (!RegExp(r'^[0-9\.]+$').hasMatch(serverAddress) && 
+           !serverAddress.contains('localhost') && 
+           !serverAddress.contains(':'))) {
+        parsedBaseUrl = "https://$serverAddress";
+        parsedWsUrl = "wss://$serverAddress";
+      } else {
+        String host = serverAddress;
+        String port = "8000";
+        if (serverAddress.contains(':')) {
+          final parts = serverAddress.split(':');
+          host = parts[0];
+          port = parts[1];
+        }
+        parsedBaseUrl = "http://$host:$port";
+        String wsPort = port == "8000" ? "9005" : port;
+        parsedWsUrl = "ws://$host:$wsPort";
+      }
+    }
+
+    if (parsedBaseUrl.endsWith('/')) parsedBaseUrl = parsedBaseUrl.substring(0, parsedBaseUrl.length - 1);
+    if (parsedWsUrl.endsWith('/')) parsedWsUrl = parsedWsUrl.substring(0, parsedWsUrl.length - 1);
+
+    await prefs.setString('server_address', serverAddress);
+    await prefs.setString('api_base_url', parsedBaseUrl);
+    await prefs.setString('websocket_url', parsedWsUrl);
+
+    _customBaseUrl = parsedBaseUrl;
+    WebSocketService.updateWsUrl(parsedWsUrl);
+  }
+
+  static Future<void> loadSavedBaseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedBaseUrl = prefs.getString('api_base_url');
+    if (savedBaseUrl != null && savedBaseUrl.isNotEmpty) {
+      _customBaseUrl = savedBaseUrl;
+    }
+  }
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();

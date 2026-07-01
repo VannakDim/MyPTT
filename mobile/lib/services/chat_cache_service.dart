@@ -150,4 +150,23 @@ class ChatCacheService {
       print("[ChatCache] Error cleaning up cache: $e");
     }
   }
+
+  // ៤. លុប Cache ទាំងអស់ (Clear all caches)
+  Future<bool> clearAllCaches() async {
+    try {
+      final dir = await _cacheDirectory;
+      if (await dir.exists()) {
+        final List<FileSystemEntity> files = await dir.list().toList();
+        for (var file in files) {
+          if (file is File && file.path.endsWith('.json')) {
+            await file.delete();
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      print("[ChatCache] Error clearing cache: $e");
+      return false;
+    }
+  }
 }

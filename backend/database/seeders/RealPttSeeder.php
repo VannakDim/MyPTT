@@ -17,8 +17,8 @@ class RealPttSeeder extends Seeder
     {
         // ១. បង្កើតក្រុមគំរូ ២
         $groupSecurity = Group::create([
-            'name' => 'security',
-            'display_name' => 'ក្រុមសន្តិសុខទូទៅ'
+            'name' => 'family',
+            'display_name' => 'គ្រួសាររីករាយ'
         ]);
 
         $groupControl = Group::create([
@@ -28,18 +28,18 @@ class RealPttSeeder extends Seeder
 
         // ២. បង្កើតគណនីអ្នកប្រើប្រាស់គំរូ ៣ នាក់ (បើមាន admin រួចហើយ វានឹងមិនបង្កើតជាន់ទេ)
         $admin = User::firstOrCreate(
-            ['email' => 'admin@gmail.com'],
-            ['name' => 'admin', 'password' => Hash::make('password'), 'role' => 'admin']
+            ['email' => 'admin@st.com'],
+            ['name' => 'admin', 'password' => Hash::make('123456'), 'role' => 'admin']
         );
 
         $user01 = User::firstOrCreate(
-            ['email' => 'security_01@gmail.com'],
-            ['name' => 'security_01', 'password' => Hash::make('password')]
+            ['email' => 't1@st.com'],
+            ['name' => 'U1', 'password' => Hash::make('123456')]
         );
 
         $user02 = User::firstOrCreate(
-            ['email' => 'security_02@gmail.com'],
-            ['name' => 'security_02', 'password' => Hash::make('password')]
+            ['email' => 't2@st.com'],
+            ['name' => 'U2', 'password' => Hash::make('123456')]
         );
 
         // ៣. ភ្ជាប់ទំនាក់ទំនង៖ ឱ្យគ្រប់គ្នាចូលក្នុងក្រុម Security និង Control Room

@@ -37,7 +37,6 @@ class Message extends Model
     {
         return $this->belongsToMany(User::class, 'message_seens', 'message_id', 'user_id')
                     ->select('users.id', 'users.name')
-                    ->withPivot('seen_at')
-                    ->withTimestamps();
+                    ->withPivot('seen_at');
     }
 }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/api_service.dart';
 import '../services/image_service.dart';
+import '../services/chat_cache_service.dart';
 import '../models/user.model.dart';
 import 'login_screen.dart';
 import 'console_tab.dart';
@@ -537,6 +538,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
 
             ListTile(
+              leading: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFF87171), size: 20),
+              title: const Text("🧹 សម្អាត Cache សារ", style: TextStyle(color: Colors.white, fontSize: 13)),
+              onTap: () {
+                Navigator.pop(context);
+                _showClearCacheDialog();
+              },
+            ),
+
+            ListTile(
               leading: const Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 20),
               title: const Text("🚪 ចាកចេញពីគណនី", style: TextStyle(color: Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
               onTap: () {
@@ -657,6 +667,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  void _showClearCacheDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          title: const Text(
+            "សម្អាត Cache សារ",
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            "តើអ្នកពិតជាចង់លុប Cache សារទាំងអស់មែនទេ? សារថ្មីៗនឹងត្រូវទាញយកមកវិញពី Server ពេលអ្នកបើកបន្ទប់ពិភាក្សាម្តងទៀត។",
+            style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("បោះបង់", style: TextStyle(color: Color(0xFF64748B))),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                final success = await ChatCacheService().clearAllCaches();
+                if (success) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("🧹 បានសម្អាត Cache សារជោគជ័យ! សូមទាញចុះក្រោមដើម្បី Sync សារថ្មី។"),
+                        backgroundColor: Color(0xFF10B981),
+                      ),
+                    );
+                    // Force refresh active group message list if ConsoleTab is loaded
+                    if (_consoleKey.currentState != null) {
+                      _consoleKey.currentState!.refreshMessages();
+                    }
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("❌ ការសម្អាត Cache បរាជ័យ!"),
+                        backgroundColor: Color(0xFFEF4444),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text("លុប Cache", style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+            ),
+          ],
         );
       },
     );

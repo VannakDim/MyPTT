@@ -240,6 +240,16 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
     }
   }
 
+  void refreshMessages() {
+    if (widget.selectedGroup != null) {
+      // Clear the message list and fetch again
+      setState(() {
+        _chatMessages.clear();
+      });
+      _fetchGroupMessages(widget.selectedGroup!.id);
+    }
+  }
+
   bool _isLoadingMore = false;
   bool _hasMoreMessages = true;
 
@@ -500,6 +510,8 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
           setState(() {
             _systemStatus = "Connected";
           });
+          // Mark all loaded messages as seen once WebSocket is connected
+          _markMessagesAsSeen(_chatMessages);
         }
       },
     );
@@ -616,6 +628,9 @@ class ConsoleTabState extends State<ConsoleTab> with WidgetsBindingObserver {
                 }
               }
             });
+            if (widget.selectedGroup != null) {
+              _cacheService.cacheMessages(widget.selectedGroup!.id, _chatMessages);
+            }
           }
         } else if (type == 'ptt_status') {
           if (_callMode != 'idle') return; // Skip PTT updates during calls!
